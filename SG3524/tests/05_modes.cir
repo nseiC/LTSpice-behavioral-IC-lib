@@ -1,0 +1,38 @@
+* SG3524 test 05 - external sync, 5 V operation, paralleled outputs
+.include sg3524_ng.lib
+Vin vin 0 20
+Rt  rt 0 10k
+Ct  ct 0 10n
+* master clock at 80 us, faster than the 100 us free-running period
+Vsync nsy 0 PULSE(0 3.5 300u 20n 20n 1.5u 80u)
+Rsy nsy osc 50
+Rl1 vin ca 2k
+Rl2 vin cb 2k
+Vea ea 0 0
+Veb eb 0 0
+Vcmp comp 0 3.0
+Vclp clp 0 0
+Vclm clm 0 0
+X1 inv ni osc clp clm rt ct 0 comp sd ea ca cb eb vin vref SG3524
+.tran 10n 1m 0 10n
+.control
+set noaskquit
+echo "--- test 05: sync, 5 V operation, paralleled outputs ---"
+run
+meas tran pfree TRIG v(ct) VAL=2.0 RISE=2 TARG v(ct) VAL=2.0 RISE=3
+meas tran psync TRIG v(ct) VAL=2.0 RISE=6 TARG v(ct) VAL=2.0 RISE=11
+let plock = psync/5
+print pfree plock
+if (abs(pfree/100.7e-6 - 1) < 0.05)
+  echo "PASS 05a free-running period before the sync pulses start"
+else
+  echo "FAIL 05a"
+end
+if (abs(plock/80e-6 - 1) < 0.02)
+  echo "PASS 05b locks to an 80 us external clock on pin 3"
+else
+  echo "FAIL 05b"
+end
+quit
+.endc
+.end

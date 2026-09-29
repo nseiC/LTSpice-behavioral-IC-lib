@@ -1,0 +1,111 @@
+* UC3854 - o mesmo PFC de 250 W da U-134 (Figura 6), agora em 230 VCA / 50 Hz
+*
+* Mesmo circuito, mesmos componentes do exemplo 02.  O que muda e so a rede:
+* o feed-forward (VRMS ~ 3.9 V, abaixo do grampo de 4.5 V) divide pelo
+* quadrado da tensao, entao VA Out fica praticamente no mesmo valor que em
+* 120 V - e isso que mantem o ganho da malha de tensao constante.
+* IAC de pico ~ 520 uA, abaixo dos 600 uA recomendados pela U-134.
+*
+* (descricao original do exemplo 02 abaixo)
+*
+*
+* Componentes exatamente como na Figura 6 da nota de aplicacao U-134:
+*   L = 1 mH, Co = 450 uF, Rs = 0.25 ohm, Rmo = Rci = 3.9k, Rcz = 20k,
+*   Ccz = 620 pF, Ccp = 62 pF, Rvi = 511k, Rvd = 10k, Rvf = 174k,
+*   Cvf = 47 nF, Rvac = 620k, Rb1 = 150k, Rff1/2/3 = 910k/91k/20k,
+*   Cff1 = 0.1 uF, Cff2 = 0.47 uF, Rpk1 = 10k, Rpk2 = 1.8k, Cpk = 100 pF,
+*   RSET = 10k, CT = 1.2 nF (~104 kHz), Css = 1 uF.
+* Tensao de saida: o divisor sozinho da 7.5 V*(511k+10k)/10k = 390 V, que e o
+* numero da U-134.  Mas o amplificador de tensao desta compensacao NAO e
+* integrador: tem ganho CC finito Rvf/Rvi = 0.34.  Entao
+*     VA Out = 7.5 + 174k*(7.5/10k - (Vout-7.5)/511k)
+* e, com VA Out ~ 4.1 V a 250 W, Vout assenta em ~400 V.  Nao e erro do
+* modelo: e o erro de regime do controle proporcional, e a U-134 pede
+* justamente 400 V.
+*
+* Diferencas: VCC vem de uma fonte de 18 V (o resistor de partida de 30k e
+* o enrolamento auxiliar nao entram), o MOSFET e uma chave com Cgs, e o
+* capacitor de saida, o filtro de feed-forward e a compensacao comecam
+* perto do regime permanente (IC= e uic) para nao gastar 300 ms de
+* simulacao so no carregamento de 450 uF.
+*
+* Rode e olhe: i(Vline) contra v(line) (fator de potencia), v(out),
+* v(vaout), v(mult), v(caout), v(ct)
+
+.include ../UC3854.lib
+
+.param VAC=230 PLOAD=250
+
+* --- rede (flutuante: o retorno da rede NAO e o terra do CI) ---------------
+Vline line lr SIN(0 {VAC*1.4142} 50)
+Rline line nl 0.2
+Rflt  lr 0 10Meg
+D1 nl  rp DBR
+D2 lr  rp DBR
+D3 rn  nl DBR
+D4 rn  lr DBR
+* C1 da Figura 6: 0.47 uF no lado CA, antes da ponte
+Cin nl lr 0.47u
+
+* --- estagio de potencia -----------------------------------------------------
+L1  rp  sw 1m
+S1  sw  0 gate 0 SWM
+Csw sw  0 220p
+D0  sw  out DBOOST
+Co  out 0 450u IC=400
+Rload out 0 {390*390/PLOAD}
+* resistor shunt no retorno: rn fica NEGATIVO em relacao ao terra do CI
+Rs  0 rn 0.25
+
+* --- VCC, enable, referencia -------------------------------------------------
+Vcc  vcc 0 18
+Rena vcc ena 22k
+C3   vref 0 1u
+
+* --- malha de tensao: 390 V -> 7.5 V -----------------------------------------
+Rvi out vsense 511k
+Rvd vsense 0 10k
+Rvf vaout vsense 174k
+Cvf vaout vsense 47n IC=-3.3
+Css ss 0 1u IC=8
+
+* --- multiplicador: IAC, feed-forward ---------------------------------------
+Rvac rp iac 620k
+Rb1  vref iac 150k
+Rff1 rp vffc 910k
+Cff1 vffc 0 0.1u IC=22.4
+Rff2 vffc vrms 91k
+Rff3 vrms 0 20k
+Cff2 vrms 0 0.47u IC=4.0
+
+* --- malha de corrente (amplificador de corrente media) -------------------
+Rmo mult rn 3.9k
+Rci isense 0 3.9k
+Rcz isense ncz 20k
+Ccz ncz caout 620p
+Ccp isense caout 62p
+
+* --- limite de pico: 0 V no pino 2 quando Vrs = 7.5*1.8k/10k = 1.35 V ------
+Rpk1 vref pklmt 10k
+Rpk2 pklmt rn 1.8k
+Cpk  pklmt 0 100p
+
+* --- oscilador --------------------------------------------------------------
+Rset rset 0 10k
+Ct   ct 0 1.2n
+
+* --- gate -------------------------------------------------------------------
+Rg  gtdrv gate 10
+Cgs gate 0 2n
+Ds  0 gtdrv DSCH
+
+*   GND PKLMT CAOUT ISENSE MULTOUT IAC VAOUT VRMS VREF ENA VSENSE RSET SS CT VCC GTDRV
+X1  0   pklmt caout isense mult  iac vaout vrms vref ena vsense rset ss ct vcc gtdrv UC3854
+
+.model SWM    SW(Ron=0.25 Roff=1Meg Vt=5 Vh=1)
+.model DBOOST D(IS=1e-9 N=1.6 RS=0.05 CJO=50p TT=25n BV=600)
+.model DBR    D(IS=1e-9 N=1.8 RS=0.02 CJO=100p)
+.model DSCH   D(IS=1e-5 N=1.1 RS=0.05)
+
+.tran 100n 100m 0 100n uic
+.end

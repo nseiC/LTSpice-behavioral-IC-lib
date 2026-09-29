@@ -1,0 +1,59 @@
+* L6599A test 01 - UVLO thresholds, start-up / operating current, RFmin reference
+* Datasheet test conditions: RFmin = 12k, CF = 470 pF, 1 nF on LVG and HVG,
+* VBOOT = 15 V.  Vcc ramps 0 -> 15 V at 1 V/ms, holds, then falls to 5 V.
+* "IC on" is observed on the RFmin pin (2 V while on, 0 V while off).
+.include l6599a_ng.lib
+Vcc  vcc 0 PWL(0 0 15m 15 20m 15 30m 5)
+Vbt  vboot 0 15
+Rf   rfmin 0 12k
+Cf   cf 0 470p
+Vst  stby 0 2
+Vln  line 0 2
+Cl   lvg 0 1n
+Ch   hvg 0 1n
+Rpf  pfc vcc 100k
+Rdl  delay 0 1Meg
+X1 css delay cf rfmin stby 0 line 0 pfc 0 lvg vcc nc 0 hvg vboot L6599A
+.tran 20n 30m 0 20n
+.control
+set noaskquit
+echo "--- test 01: supply, UVLO, reference ---"
+run
+meas tran ton WHEN v(rfmin)=1 RISE=1
+meas tran tof WHEN v(rfmin)=1 FALL=1
+let von = ton*1000
+let voff = 15-(tof-20m)*1000
+meas tran ist FIND i(Vcc) AT=10.5m
+let istu = -ist*1e6
+meas tran iop AVG i(Vcc) from=16m to=19m
+let iopm = -iop*1e3
+meas tran vrf AVG v(rfmin) from=16m to=19m
+print von voff istu iopm vrf
+if (abs(von-10.7) < 0.1)
+  echo "PASS 01a turn-on threshold 10.7 V (datasheet 10 .. 11.4)"
+else
+  echo "FAIL 01a"
+end
+if (abs(voff-8.15) < 0.1)
+  echo "PASS 01b turn-off threshold 8.15 V (datasheet 7.45 .. 8.85, hysteresis 2.55 V)"
+else
+  echo "FAIL 01b"
+end
+if (abs(istu-200) < 20)
+  echo "PASS 01c start-up current 200 uA at VccOn - 0.2 V (datasheet 200 typ, 250 max)"
+else
+  echo "FAIL 01c"
+end
+if (abs(iopm-3.5) < 0.2)
+  echo "PASS 01d operating current 3.5 mA, 1 nF loads, 60 kHz (datasheet 3.5 typ, 5 max)"
+else
+  echo "FAIL 01d"
+end
+if (abs(vrf-2) < 0.01)
+  echo "PASS 01e RFmin reference 2.00 V (datasheet 1.93 .. 2.07)"
+else
+  echo "FAIL 01e"
+end
+quit
+.endc
+.end

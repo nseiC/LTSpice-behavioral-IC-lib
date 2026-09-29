@@ -1,0 +1,466 @@
+*------------------------------------------------------------------------------
+* SG3524 - SMPS control circuit (PWM controller)
+* Behavioral ("functional") macromodel for LTspice.
+*
+* Based on three datasheets for the same part, cross-checked against each
+* other:
+*   Philips Semiconductors, "SG3524 SMPS control circuit", 1994 Aug 31
+*                           (853-0891 13721)
+*   STMicroelectronics,     "SG2524/SG3524 regulating pulse width modulators",
+*                           June 2000
+*   Texas Instruments,      "SG2524/SG3524 regulating pulse-width modulators",
+*                           SLVS077D, April 1977 - revised February 2003
+*
+* This is NOT a transistor-level model.  Every block of the datasheet block
+* diagram (Figure 2) is reproduced by its terminal behaviour, with the
+* numbers taken from the DC ELECTRICAL CHARACTERISTICS table and from the
+* THEORY OF OPERATION section.  It is meant for closed-loop SMPS simulation:
+* it is fast, it converges, and it reproduces the specs that matter for a
+* power-supply design.
+*
+* ---------------------------------------------------------------------------
+* PIN ORDER  (same order as the 16-pin DIP, pin 1 .. pin 16)
+* ---------------------------------------------------------------------------
+*   1  INV    Inverting input of the error amplifier
+*   2  NI     Non-inverting input of the error amplifier
+*   3  OSC    Oscillator output (blanking pulse, also the SYNC terminal)
+*   4  CLP    (+) current-limit sense
+*   5  CLM    (-) current-limit sense
+*   6  RT     Timing resistor (held at 3.6 V; I_charge = 3.6 V / RT)
+*   7  CT     Timing capacitor (linear ramp)
+*   8  COM    Ground  (device reference; does NOT have to be node 0)
+*   9  COMP   Compensation / error-amplifier output (high impedance node)
+*  10  SD     Shutdown (active high, internal 10k to ground)
+*  11  EA     Emitter  A
+*  12  CA     Collector A
+*  13  CB     Collector B
+*  14  EB     Emitter  B
+*  15  VIN    Supply
+*  16  VREF   5 V reference output (also supplies all internal circuitry)
+*
+*   X1 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 SG3524
+*
+* ---------------------------------------------------------------------------
+* WHAT IS MODELLED
+* ---------------------------------------------------------------------------
+*  * 5 V series reference: 1 ohm output impedance (= 20 mV load regulation at
+*    20 mA, datasheet typ), ~105 mA short-circuit fold-off (spec 100 mA),
+*    1.7 V dropout.  The regulator can only SOURCE current, so tying pins 15
+*    and 16 to an external +5 V rail (the documented 5 V-operation mode)
+*    works: the internal rail then simply follows pin 16.
+*  * All internal circuitry is powered from the pin-16 rail, exactly as in the
+*    block diagram.  Below ~3.6 V on that rail the oscillator and the outputs
+*    are held off (soft enable, 3.6 V .. 4.4 V).
+*  * Oscillator: constant charging current 3.6 V / RT into CT, linear ramp,
+*    period = RT * CT (datasheet: "t = RT*CT, t in us when RT in ohm and CT in
+*    uF").  That relation fixes the ramp swing at 3.6 V; the model ramps CT
+*    from VCTL = 0.6 V to VCTH = 4.2 V.  See the note on RAMP ENDPOINTS below.
+*  * Dead time: CT is discharged by a constant IDIS so the blanking pulse is
+*    0.5 us at CT = 0.01 uF (datasheet "output pulse width") and scales
+*    linearly with CT, as in Figure 5.
+*  * Pin 3 is driven to 3.5 V during the blanking pulse through a low
+*    impedance, and has the documented ~2 kohm impedance to ground.  Adding
+*    the recommended ~100 pF from pin 3 to ground widens the blanking pulse,
+*    just as the datasheet describes.
+*  * External synchronisation: a >2.5 V pulse forced on pin 3 discharges CT
+*    and blanks the outputs, so several devices can be slaved off one master.
+*  * PWM comparator mapped onto the datasheet's comparator-section limits:
+*    zero duty cycle at V(COMP) = 1.0 V, maximum duty at V(COMP) = 3.5 V.
+*  * Toggle flip-flop (true master/slave, no race): the two outputs alternate,
+*    each at half the oscillator frequency, 0..~45 % duty each, and they are
+*    blanked together during the oscillator pulse so they can never overlap.
+*  * Error amplifier: transconductance, gm = 2 mA/V, 5 Mohm output impedance
+*    => 80 dB open-loop gain, pole at ~320 Hz, unity gain at ~3.2 MHz (spec:
+*    80 dB, ~200 Hz pole, 3 MHz small-signal BW).  Loading pin 9 with an
+*    external resistor reduces the gain exactly as in Figure 7 (Av = 0.002*RL).
+*    Output swing clamped to 0.5 V .. 3.8 V, +-200 uA output current,
+*    2 mV offset, 2 uA input bias current.
+*  * Current limit: 200 mV threshold on CLP-CLM, ~300 Hz roll-off pole
+*    (R1*C1 in Figure 9), soft take-over of pin 9 from the error amplifier.
+*    Both sense pins are weakly biased to the same 0.5 V node, so grounding
+*    pin 5 and leaving pin 4 open shuts the outputs off (the documented
+*    "extra shutdown terminal" trick) while leaving both open does nothing.
+*  * Shutdown: active-high on pin 10 with the internal 10 k pull-down from the
+*    block diagram; it pulls pin 9 down like the internal transistor does.
+*  * Output transistors: uncommitted NPNs brought out as collector/emitter
+*    pairs, Vce(sat) ~ 1 V at 50 mA (spec typ 1 V / max 2 V), sub-uA off-state
+*    leakage, and they cannot conduct backwards.
+*  * VIN quiescent current 8 mA plus the reference load and the oscillator
+*    charging current (the datasheet's 8 mA excludes those two).
+*
+* ---------------------------------------------------------------------------
+* WHAT IS NOT MODELLED  (behavioural model - know the limits)
+* ---------------------------------------------------------------------------
+*  * Temperature drift, tolerances and the min/max spread: everything is the
+*    typical value at 25 C.  Change the .param values for a corner run.
+*  * Error-amplifier common-mode limits (1.8 V .. 3.4 V) and the current-limit
+*    common-mode range (-1 V .. +1 V) are NOT enforced.  The model keeps
+*    working outside them; the real part does not.
+*  * The 300 kHz maximum operating frequency is a device limit, not a formula
+*    limit - the model will happily run past it.
+*  * Reference line regulation is ideal above the dropout point.
+*  * Output-stage rise/fall is a fixed ~47 ns drive slew; real edges are set
+*    mostly by the external load (spec 0.2 us / 0.1 us with RC = 2 k).
+*
+* ---------------------------------------------------------------------------
+* OSCILLATOR FREQUENCY - THE VENDORS DISAGREE, PICK YOURS
+* ---------------------------------------------------------------------------
+* Every SG3524 datasheet agrees the charging current is 3.6 V / RT.  They do
+* NOT agree on the resulting frequency, because they disagree on how far the
+* CT ramp swings.  Written in the same units (RT in kohm, CT in uF, f in kHz):
+*
+*   vendor                     quoted formula        ramp swing   VCTH
+*   -----------------------------------------------------------------------
+*   Philips  1994              t = RT*CT             3.60 V       4.20  <- default
+*   ST       2000 (SG2524)     f = 1.18 / (RT*CT)    3.05 V       3.65
+*   TI       2003 (SLVS077D)   f = 1.30 / (RT*CT)    2.77 V       3.37
+*
+* That is a 30 % spread between Philips and TI for the same RT and CT, so it
+* is worth matching your actual part.  Select it by overriding VCTH:
+*
+*   X1 ... SG3524                        <- Philips, t = RT*CT
+*   X1 ... SG3524 VCTH=3.65 GDIS=69m     <- ST,  f = 1.18/(RT*CT)
+*   X1 ... SG3524 VCTH=3.37 GDIS=67m     <- TI,  f = 1.30/(RT*CT)
+*
+* GDIS goes with VCTH because the dead time is (CT/GDIS)*ln((VCTH-VCTMIN)/
+* (VCTL-VCTMIN)); trimming it keeps the blanking pulse at the 0.5 us that all
+* three datasheets specify for CT = 0.01 uF.  Leaving GDIS alone costs 5 %.
+*
+* Measured, RT = 10 kohm, CT = 10 nF:
+*
+*   Philips  expected 10.00 kHz, model 9.94 kHz   (-0.6 %)
+*   ST       expected 11.80 kHz, model 11.71 kHz  (-0.7 %)
+*   TI       expected 13.00 kHz, model 12.88 kHz  (-0.9 %)
+*
+* Everything else in this model is identical across all three datasheets:
+* reference, error amplifier (gm = 2 mA/V into 5 Mohm, 200 Hz pole, 1.8-3.4 V
+* common mode), comparator thresholds (1.0 V / 3.5 V, 0-45 % per output),
+* current limit (200 mV), output stage (1 V sat at 50 mA), 8 mA standby, and
+* the 0.5 us blanking pulse at CT = 0.01 uF.
+*
+* Any parameter in the .param list below can be overridden the same way.
+*------------------------------------------------------------------------------
+
+.SUBCKT SG3524 INV NI OSC CLP CLM RT CT COM COMP SD EA CA CB EB VIN VREF
++ VREFNOM=5.0 VDROP=1.7 GREF=1 IREFSC=105m ICC=8m
++ VENL=3.6 VENW=0.8
++ VRT=3.6 VCTL=0.6 VCTH=4.2 GDIS=72m VCTMIN=0.5
++ VOSCH=3.5 GOSC=0.1 IOSCMX=3m ROSC=2k COSC=10p VSYNC=2.5
++ VCMIN=1.0 VCMAX=3.5 DMAX=0.90 VPWM0=0.50
++ GMEA=2m IEAMAX=200u VOS=2m IBIAS=2u REAO=5Meg CEAO=100p
++ VEAL=0.5 VEAH=3.8 GCLAMP=1m
++ VCLTH=190m GCLV=141 VCLB=0.5
++ VSDTH=0.7 GSDV=100 RSD=10k
++ GPD=20m VPDL=0.2 IPDMAX=5m
++ KCT=100 KLOG=10 KSYN=10 GFF=3 RDRV=1k CDRV=47p CBLK=10n
++ VCESAT=0.75 RCE=5 RLEAK=100Meg
+
+*==============================================================================
+* INTERNAL 5 V RAIL AND ENABLE
+* The block diagram feeds "+5V to all internal circuitry" from the reference
+* regulator, so the internal rail IS the pin-16 voltage.  That is also why
+* tying pins 15 and 16 to an external 5 V supply works.
+*==============================================================================
+Ben   n_en  COM V = max(0, min(1, (V(VREF,COM)-{VENL})/{VENW}))
+
+*==============================================================================
+* REFERENCE REGULATOR  (pin 16)
+* Source-only transconductance: GREF = 1 S -> 1 ohm output impedance, i.e.
+* 20 mV drop at 20 mA (datasheet load regulation typ).  Hard limit at IREFSC
+* gives the 100 mA short-circuit current.
+*==============================================================================
+Breft n_reft COM V = min({VREFNOM}, V(VIN,COM)-{VDROP})
+Bref  COM  VREF I = max(0, min({IREFSC}, {GREF}*(V(n_reft,COM)-V(VREF,COM))))
+Rref  VREF COM 10Meg
+Cref  VREF COM 1n
+
+*==============================================================================
+* SUPPLY CURRENT  (pin 15)
+* 8 mA standby + whatever the reference delivers + the oscillator charging
+* current (the datasheet's 8 mA figure explicitly excludes the last two).
+*==============================================================================
+Bicc  VIN COM I = {ICC}*V(n_en,COM)
++   + max(0, min({IREFSC}, {GREF}*(V(n_reft,COM)-V(VREF,COM))))
++   + max(0, I(Vs_rt))
+
+*==============================================================================
+* OSCILLATOR
+*
+* Pin 6 is held at 3.6 V, so the external RT sets the charging current
+* I = 3.6/RT (datasheet: keep it between 30 uA and 2 mA, 1.8k < RT < 100k).
+* Vs_rt is a 0 V sense source that measures that current so it can be
+* mirrored into CT.
+*==============================================================================
+Brt   n_rt COM V = {VRT}*V(n_en,COM)
+Vs_rt n_rt RT  0
+
+* --- CT ramp: charge with the mirrored current, discharge at IDIS ------------
+* The discharge is RESISTIVE (a conductance GDIS onto the VCTMIN floor), not a
+* constant current, and that choice is what makes the oscillator step-size
+* independent.
+*
+* With a constant current the ramp falls at IDIS/CT - 7.2 V/us at CT = 10 nF -
+* right through the latch's reset threshold, so every solver step quantises the
+* valley by (IDIS/CT)*dt.  The dead time then lands on a step boundary, the
+* period inherits that scatter, and the oscillator jitters: 3 % at maxstep
+* 25 ns, 17 % at 100 ns, 32 % at 500 ns and 71 % with the step left free, with
+* the two outputs drifting to visibly different widths.
+*
+* Discharging onto a floor instead makes CT approach VCTMIN exponentially, so
+* near the reset threshold it is crawling at (VCTL-VCTMIN)/tau = 0.72 V/us -
+* ten times slower - and the same solver step resolves it ten times better.
+* CT also cannot overshoot below VCTMIN no matter how coarse the step.
+*
+* tau = CT/GDIS, so the dead time still scales linearly with CT:
+*   t_dead = (CT/GDIS) * ln((VCTH-VCTMIN)/(VCTL-VCTMIN)) = CT/GDIS * 3.61
+* GDIS = 72 mS puts that at 0.5 us for CT = 0.01 uF, the datasheet's number.
+*
+Bct   COM CT I =
++   (1-V(n_blk,COM))*max(0,I(Vs_rt))
++ - V(n_blk,COM)*{GDIS}*max(0, V(CT,COM)-{VCTMIN})
+Rct   CT COM 1000Meg
+
+* --- discharge latch: set at VCTH, reset at VCTL -----------------------------
+* Self-referencing B-source + 1 ns RC = one bit of state, the standard
+* LTspice idiom for a behavioural latch.
+* The comparator windows are deliberately wide: KCT = 100 is a 10 mV window on
+* a 3.6 V ramp (0.3 % timing resolution) and KLOG = 10 is a 0.1 V window on a
+* logic node.  Infinitely sharp comparators are what collapse the time step
+* once this model drives a real converter - at CT = 1 nF the ramp discharges at
+* 72 V/us, so a 0.1 mV window would have to be resolved in about a picosecond.
+* KLOG = 10 still gives the latch a loop gain of 10, so it latches properly.
+Bdsc  n_dsc COM V = max(0,min(1,(V(n_dis,COM)-0.5)*{KLOG}))
+Bdis  n_disx COM V =
++     V(n_dsc,COM)     * max(0,min(1,(V(CT,COM)-{VCTL})*{KCT}))
++   + (1-V(n_dsc,COM)) * max(0,min(1,(V(CT,COM)-{VCTH})*{KCT}))
+* 300 ps, not 1 ns: the latch delay lets CT keep discharging after the reset
+* threshold is crossed, and that undershoot (IDIS * t_latch / CT) is what sets
+* the real ramp valley.  At 1 ns it is 33 mV with CT = 10 nF but 330 mV with
+* CT = 1 nF, which would stretch the period by 9 % at the small-CT end.  At
+* 300 ps the period stays within ~1 % across the whole useful 1 nF .. 100 nF
+* range.  Going below ~300 ps buys almost nothing and starts to collapse the
+* time step when the model drives a stiff power stage.
+Rdis  n_disx n_dis 1
+Cdis  n_dis  COM 300p
+Rdisg n_dis  COM 1G
+
+*==============================================================================
+* OSCILLATOR OUTPUT / SYNC  (pin 3)
+* Driven to 3.5 V during the discharge pulse; ~2 kohm to ground otherwise,
+* which is the impedance the datasheet quotes for injecting a sync pulse.
+* The drive is source-only and is gated by our OWN discharge state (n_dsc,
+* not the blanking signal) so that an externally forced sync pulse can never
+* latch the device into permanent discharge.
+*==============================================================================
+Rosc  OSC COM {ROSC}
+Cosc  OSC COM {COSC}
+* The drive current is capped at IOSCMX.  Without the cap the source would dump
+* 350 mA into the couple of pF on this pin, i.e. a 20 ps time constant, and the
+* integrator would numerically overshoot the 3.5 V level.  Keep COSC small:
+* raising it stretches the blanking pulse, because pin 3 has to fall back
+* through VSYNC before the outputs are released - which is exactly the
+* datasheet's own trick of hanging ~100 pF on pin 3 to widen the dead time.
+Bosc  COM OSC I = max(0, min({IOSCMX},
++                  {GOSC}*({VOSCH}*V(n_dsc,COM)*V(n_en,COM) - V(OSC,COM)) ))
+
+*==============================================================================
+* BLANKING
+* Outputs are dead while CT discharges, or while an external sync pulse is
+* applied to pin 3.  This is what guarantees the two outputs never overlap.
+*==============================================================================
+* Bblk is deliberately followed by a 2 ns slew (Rblk/Cblk).  Without it the
+* blanking signal is a true mathematical step, and every block that depends on
+* it - the flip-flop, the CT current source, the output gating - has to resolve
+* a discontinuity in zero time.  That is what collapses the time step when this
+* model drives a stiff power stage.  20 ns is small next to the shortest
+* blanking pulse the datasheet allows (0.5 us) but it gives the solver an edge
+* to walk - and, just as important, it sets the timing hierarchy the flip-flop
+* below depends on.
+* The sync term is multiplied by (1 - n_dsc): while the model is driving pin 3
+* itself, its own 3.5 V pulse must not be read back as an external clock.  That
+* also keeps the very fast edge of our own drive out of this comparator.
+Bblk  n_blkx COM V = max( V(n_dsc,COM),
++                         (1-V(n_dsc,COM))
++                         * max(0,min(1,(V(OSC,COM)-{VSYNC})*{KSYN})) )
+Rblk  n_blkx n_blk 1
+Cblk  n_blk  COM {CBLK}
+
+*==============================================================================
+* PULSE-STEERING FLIP-FLOP
+* Master/slave toggle clocked by the blanking pulse.  The master tracks /Q
+* while the clock is high and the slave copies the master while it is low, so
+* there is no race and no dependence on edge-detector timing.
+*==============================================================================
+* The 1 G bleeders make the storage nodes solvable at DC.  Without them the
+* hold equation degenerates to V(n) = V(n) and the operating point is
+* singular, which breaks .op / .dc / .ac.  1 G against the 200 pF gives a
+* 0.2 s state-decay time constant - orders of magnitude slower than any hold
+* interval, so the stored bit does not move.  (Do not be tempted to make these
+* smaller: at 1 Meg the flip-flop forgets its state in about a millisecond and
+* the outputs quietly stop alternating.)
+*
+* TIMING HIERARCHY - the three numbers below must keep their ratios:
+*
+*   blanking slew (Rblk*Cblk)          10 ns   <- solver must resolve this
+*   gate transition window (5% of it)  0.5 ns  <- gm/gs are partially open here
+*   storage cell RC (Rm*Cm)             2 ns   <- must be >> that 0.5 ns window
+*   shortest blanking pulse            0.5 us  <- must be >> the cell RC
+*
+* The cell RC being five times the gate window is what makes this robust: when
+* the solver happens to land inside the window, gm and gs are both partly open
+* and the master sees a blend of "hold" and "capture", but the cell is too slow
+* to move meaningfully in 0.5 ns, and by the next step the gate has resolved.
+*
+* With the cells at 200 ps - faster than the gate window - the cell DID react
+* to that blend, the regenerative gain then latched it whichever way it had
+* drifted, and the flip-flop skipped a toggle: one output fired twice in a row
+* and the measured duty ran past 50 %.  It was purely a time-step artefact
+* (20 % of toggles at maxstep 50 ns, 7 % at 10 ns, 0 % at 2 ns).
+* n_gm and n_gs are NON-OVERLAPPING gates cut out of the blanking edge: the
+* master is transparent only above 0.70 and the slave only below 0.30, so in
+* the band between them both stages hold.  Gating both stages straight off
+* V(n_blk) would make them transparent together while the 2 ns edge is in
+* flight, the loop would go round once, and the flip-flop would stop dividing
+* by two - the two outputs would then fire every oscillator cycle instead of
+* alternating.
+Bgm   n_gm COM V = max(0, min(1, (V(n_blk,COM)-0.65)*20))
+Bgs   n_gs COM V = max(0, min(1, (0.35-V(n_blk,COM))*20))
+* Each stored bit is passed through a REGENERATIVE squaring function,
+* max(0,min(1,(v-0.5)*GFF+0.5)) with GFF > 1, instead of being fed back
+* linearly.  A linear hold makes v = 0.5 a *stable* fixed point: if anything
+* ever parks the flip-flop halfway - a marginal blanking edge during start-up
+* will do it - it sits there forever, both drive nodes idle at 0.5, and the
+* outputs simply stop switching.  (That is exactly what a push-pull stage with
+* a transformer provoked.)  With GFF = 3 the halfway point becomes unstable and
+* the bit snaps to a rail in about 100 ps, which is what a real cross-coupled
+* latch does.
+Bm    n_mx COM V = V(n_gm,COM)   * (1 - max(0,min(1,(V(n_q,COM)-0.5)*{GFF}+0.5)))
++                + (1-V(n_gm,COM)) * max(0,min(1,(V(n_m,COM)-0.5)*{GFF}+0.5))
+Rm    n_mx n_m 1
+Cm    n_m  COM 2n
+Rmg   n_m  COM 1G
+Bq    n_qx COM V = V(n_gs,COM)     * max(0,min(1,(V(n_m,COM)-0.5)*{GFF}+0.5))
++                + (1-V(n_gs,COM)) * max(0,min(1,(V(n_q,COM)-0.5)*{GFF}+0.5))
+Rq    n_qx n_q 1
+Cq    n_q  COM 2n
+Rqg   n_q  COM 1G
+
+*==============================================================================
+* ERROR AMPLIFIER  (pins 1, 2 -> pin 9)
+* Simple differential transconductance amplifier, exactly as described:
+* gm = 2 mA/V and Av = gm*RL, so an external shunt on pin 9 sets the gain
+* (Figure 7).  Bias currents shut off as the input approaches ground so that
+* an unconnected input does not run away.
+*==============================================================================
+Rin1  INV COM 100Meg
+Rin2  NI  COM 100Meg
+Bib1  INV COM I = {IBIAS}*max(0,min(1,V(INV,COM)*10))
+Bib2  NI  COM I = {IBIAS}*max(0,min(1,V(NI,COM)*10))
+Bea   COM COMP I = max(-{IEAMAX},
++                      min({IEAMAX}, {GMEA}*(V(NI,COM)-V(INV,COM)-{VOS})))
+Rea   COMP COM {REAO}
+Cea   COMP COM {CEAO}
+* output swing clamps, 0.5 V .. 3.8 V
+Bclh  COMP COM I = {GCLAMP}*uramp(V(COMP,COM)-{VEAH})
+Bcll  COM COMP I = {GCLAMP}*uramp({VEAL}-V(COMP,COM))
+
+*==============================================================================
+* CURRENT LIMIT  (pins 4, 5)
+* Low-gain amplifier that servos pin 9 down once CLP-CLM passes ~200 mV, with
+* the ~300 Hz roll-off pole that R1*C1 and Q1 give in Figure 9.
+*
+* It is written as a servo rather than as a switch so that it reproduces the
+* datasheet's own definition of the threshold: "the input voltage required to
+* get 25% duty cycle with the error amplifier signaling maximum duty cycle".
+* 25 % per output corresponds to V(COMP) = 2.39 V with the default comparator
+* mapping, and GCLV = 141 V/V puts exactly that point at 200 mV of sense:
+*
+*    190 mV sense -> target 3.8 V  (idle, the error amplifier still has pin 9)
+*    200 mV sense -> target 2.39 V -> 25 % duty each output   <-- spec point
+*    217 mV sense -> target 0.2 V  -> outputs off
+*
+* The amplifier can only pull pin 9 DOWN, so it overrides the error amplifier
+* the same way the real one does, in the loop and not just at the rail.
+*
+* Both sense pins sit on the same weak 0.5 V bias, so:  both pins open -> no
+* limiting;  pin 5 grounded and pin 4 open -> outputs off (the documented
+* auxiliary-shutdown connection).
+* NOTE: the +-1 V common-mode range is not enforced by the model.
+*==============================================================================
+Bclb  n_clb COM V = {VCLB}*V(n_en,COM)
+Rclp  CLP n_clb 2Meg
+Rclm  CLM n_clb 2Meg
+Bcls  n_cls COM V = V(CLP,CLM)
+Rclf  n_cls n_clf 1Meg
+Cclf  n_clf COM 530.5p
+Bcl   COMP COM I = max(0, min( {IPDMAX}, {GPD}*( V(COMP,COM)
++        - max({VPDL}, {VEAH} - {GCLV}*(V(n_clf,COM)-{VCLTH})) ) ))
+
+*==============================================================================
+* SHUTDOWN  (pin 10)
+* Active high.  The 10 k to ground is the one drawn in the block diagram, so
+* an open pin 10 means "run".
+*==============================================================================
+Rsd   SD COM {RSD}
+Bsd   COMP COM I = max(0, min( {IPDMAX}, {GPD}*( V(COMP,COM)
++        - max({VPDL}, {VEAH} - {GSDV}*(V(SD,COM)-{VSDTH})) ) ))
+
+*==============================================================================
+* PWM COMPARATOR
+* The ramp is compared against pin 9 mapped onto the datasheet's comparator
+* limits: VCMIN = 1.0 V gives zero duty cycle, VCMAX = 3.5 V gives maximum.
+* DMAX is what "maximum" means: 0.90 of the ramp, i.e. the spec'd 45 % per
+* output in push-pull / 90 % with the outputs paralleled.  Set DMAX=1 to let
+* the dead time alone set the ceiling.
+*
+* The ramp reference starts at VPWM0 = 0.50 V, just UNDER the 0.6 V valley,
+* so that V(COMP) = 1.0 V really does give zero duty instead of a sliver of a
+* pulse on every cycle.  The 0.1 V of headroom is what absorbs the latch
+* undershoot described above.
+*==============================================================================
+Bpwm  n_pwm COM V = max(0, min(1,
++   ( {VPWM0} + ({VCTH}-{VPWM0})*{DMAX}*(V(COMP,COM)-{VCMIN})/({VCMAX}-{VCMIN})
++     - V(CT,COM) )*{KCT} ))
+
+*==============================================================================
+* OUTPUT STEERING NOR GATES + DRIVE SLEW
+*==============================================================================
+Bdra  n_drax COM V = V(n_pwm,COM)*(1-V(n_q,COM))*(1-V(n_blk,COM))*V(n_en,COM)
+Rdra  n_drax n_dra {RDRV}
+Cdra  n_dra  COM   {CDRV}
+Bdrb  n_drbx COM V = V(n_pwm,COM)*V(n_q,COM)*(1-V(n_blk,COM))*V(n_en,COM)
+Rdrb  n_drbx n_drb {RDRV}
+Cdrb  n_drb  COM   {CDRV}
+
+*==============================================================================
+* OUTPUT TRANSISTORS  (pins 11..14)
+* Each output is an uncommitted NPN brought out as a collector/emitter pair.
+* It is a behavioural source rather than a switch + diode, because a switch
+* changes resistance discontinuously and a junction diode adds an internal
+* node; both of those wreck the time step once this model is driving a real
+* power stage.  The expression below is smooth everywhere and still gives:
+*
+*    Vce(sat) = VCESAT + RCE*Ic   ->  1.00 V at 50 mA, 1.25 V at 100 mA
+*                                     (datasheet typ 1 V, max 2 V at 50 mA)
+*    no reverse conduction (the max(0,..) floor), like a real NPN
+*    off-state leakage set by RLEAK: 0.4 uA at 40 V (spec typ 0.1, max 50 uA)
+*
+* RLEAK doubles as the DC path that keeps unconnected output pins from
+* producing a floating-node error.
+*==============================================================================
+* The drive term is thresholded, NOT used linearly.  At full drive the source
+* can sink amps, so a linear multiplier would let a 1 % residual on the drive
+* node (the flip-flop never settles to exactly 0 and 1) saturate the output
+* anyway - both outputs would then appear to conduct every cycle.  The
+* max(0,min(1,(v-0.5)*4)) gate is a switch with a 0.25 V transition window,
+* which the 47 ns drive slew turns into a ~12 ns edge.
+Boa   CA EA I = max(0,min(1,(V(n_dra,COM)-0.5)*4))
++               * max(0, (V(CA,EA)-{VCESAT})/{RCE})
+Rla   CA EA {RLEAK}
+Bob   CB EB I = max(0,min(1,(V(n_drb,COM)-0.5)*4))
++               * max(0, (V(CB,EB)-{VCESAT})/{RCE})
+Rlb   CB EB {RLEAK}
+Rlea  EA COM 1000Meg
+Rleb  EB COM 1000Meg
+
+.ENDS SG3524

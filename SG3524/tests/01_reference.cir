@@ -1,0 +1,77 @@
+* SG3524 test 01 - reference section (pin 16) and supply current (pin 15)
+.include sg3524_ng.lib
+Vin  vin 0 20
+Rt   rt 0 1e12
+Ct   ct 0 10n
+Vea  ea 0 0
+Veb  eb 0 0
+Vsns nref vref 0
+Rload nref 0 1e12
+X1 inv ni osc clp clm rt ct 0 comp sd ea ca cb eb vin vref SG3524
+Vclp clp 0 0
+Vclm clm 0 0
+.control
+set noaskquit
+echo "--- test 01: reference section ---"
+
+op
+print v(vref)
+if (abs(v(vref)-5) < 0.01)
+  echo "PASS 01a VREF = 5.00 V at VIN = 20 V"
+else
+  echo "FAIL 01a"
+end
+
+alter Vin = 8
+op
+print v(vref)
+if (abs(v(vref)-5) < 0.01)
+  echo "PASS 01b VREF = 5.00 V at VIN = 8 V (line regulation)"
+else
+  echo "FAIL 01b"
+end
+
+alter Vin = 40
+op
+print v(vref) i(Vin)
+if (abs(v(vref)-5) < 0.01)
+  echo "PASS 01c VREF = 5.00 V at VIN = 40 V (line regulation)"
+else
+  echo "FAIL 01c"
+end
+if (-i(Vin)*1000 > 7) & (-i(Vin)*1000 < 11)
+  echo "PASS 01d standby supply current 8..10 mA at VIN = 40 V"
+else
+  echo "FAIL 01d"
+end
+
+alter Vin = 6
+op
+print v(vref)
+if (v(vref) < 4.9) & (v(vref) > 3.5)
+  echo "PASS 01e dropout: VREF follows VIN - 1.7 V below ~6.7 V"
+else
+  echo "FAIL 01e"
+end
+
+alter Vin = 20
+alter Rload = 250
+op
+print v(vref) i(Vsns)
+if (abs((5-v(vref))*1000 - 20) < 3)
+  echo "PASS 01f load regulation 20 mV at 20 mA (datasheet typ 20 mV)"
+else
+  echo "FAIL 01f"
+end
+
+alter Rload = 0.01
+op
+print i(Vsns)
+if (abs(i(Vsns))*1000 > 95) & (abs(i(Vsns))*1000 < 115)
+  echo "PASS 01g short-circuit current ~105 mA (datasheet 100 mA)"
+else
+  echo "FAIL 01g"
+end
+quit
+.endc
+.end

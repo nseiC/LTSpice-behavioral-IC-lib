@@ -1,0 +1,79 @@
+* UC3854 test 01 - UVLO, enable, supply current and 7.5 V reference
+* CT is held by a source so the oscillator is frozen and .op is well defined.
+.include uc3854_ng.lib
+Vcc  vcc 0 18
+Vena ena 0 7.5
+Rset rset 0 15k
+Vct  ct 0 0
+Vsns nref vref 0
+Rload nref 0 1e12
+Vvrms vrms 0 1.5
+Vpk  pk 0 1
+Rgt  gt 0 1e9
+X1 0 pk caout isense mult iac vaout vrms vref ena vsense rset ss ct vcc gt UC3854
+Rvs vsense 0 1e9
+Ris isense 0 1e9
+Rmo mult 0 1e9
+.control
+set noaskquit
+echo "--- test 01: supply, UVLO, enable, reference ---"
+
+op
+print v(vref) -i(Vcc)
+if (abs(v(vref)-7.5) < 0.01)
+  echo "PASS 01a VREF = 7.50 V at VCC = 18 V (datasheet 7.4 .. 7.6)"
+else
+  echo "FAIL 01a"
+end
+if (abs(-i(Vcc)*1000 - 10) < 1.5)
+  echo "PASS 01b supply current on = 10 mA (datasheet typ 10, max 16)"
+else
+  echo "FAIL 01b"
+end
+
+alter Vcc = 35
+op
+print v(vref)
+if (abs(v(vref)-7.5) < 0.01)
+  echo "PASS 01c VREF line regulation 18 V -> 35 V < 10 mV"
+else
+  echo "FAIL 01c"
+end
+alter Vcc = 18
+
+alter Rload = 750
+op
+print v(vref) i(Vsns)
+if (abs((7.5-v(vref))*1000 - 5) < 1)
+  echo "PASS 01d load regulation 5 mV at 10 mA (datasheet typ 5, max 15)"
+else
+  echo "FAIL 01d"
+end
+
+alter Rload = 0.01
+op
+print i(Vsns)
+if (abs(i(Vsns))*1000 > 25) & (abs(i(Vsns))*1000 < 31)
+  echo "PASS 01e REF short-circuit current 28 mA (datasheet 12 .. 50, typ 28)"
+else
+  echo "FAIL 01e"
+end
+alter Rload = 1e12
+
+alter Vena = 0
+op
+print v(vref) -i(Vcc)
+if (abs(-i(Vcc)*1000 - 1.5) < 0.2)
+  echo "PASS 01f supply current off (ENA = 0) = 1.5 mA (datasheet typ 1.5, max 2)"
+else
+  echo "FAIL 01f"
+end
+if (abs(v(vref)) < 0.05)
+  echo "PASS 01g REF held at 0 V while disabled"
+else
+  echo "FAIL 01g"
+end
+alter Vena = 7.5
+quit
+.endc
+.end

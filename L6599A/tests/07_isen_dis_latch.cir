@@ -1,0 +1,73 @@
+* L6599A test 07 - latched shutdowns: ISEN > 1.5 V and DIS > 1.85 V.
+* Both latch the IC off (outputs low, PFC_STOP low) until Vcc goes below
+* UVLO.  Vcc dips to 7 V between 1.0 and 1.2 ms to release the latches.
+.include l6599a_ng.lib
+Vcc  vcc 0 PWL(0 15 1m 15 1.05m 7 1.15m 7 1.2m 15)
+Vbt  vboot 0 15
+Vst  stby 0 2
+Vln  line 0 2
+
+* ISEN latch: a 10 us pulse of 1.6 V at 0.3 ms
+Vis  isen 0 PWL(0 0 0.3m 0 0.30001m 1.6 0.31m 1.6 0.31001m 0)
+Rf   rfmin 0 12k
+Cf   cf 0 470p
+Cl   lvg 0 1n
+Rdl  delay 0 1Meg
+Cdl  delay 0 100n
+Rpf  pfc vcc 10k
+X1 css delay cf rfmin stby isen line 0 pfc 0 lvg vcc nc 0 hvg vboot L6599A
+
+* DIS latch: DIS ramps 1.7 -> 2.0 V from 0.2 to 0.5 ms, then back to 0
+Vdis dis 0 PWL(0 0 0.2m 1.7 0.5m 2.0 0.51m 0)
+Rf2  rf2 0 12k
+Cf2  cf2 0 470p
+Cl2  lv2 0 1n
+Rdl2 dl2 0 1Meg
+Rpf2 pf2 vcc 10k
+X2 cs2 dl2 cf2 rf2 stby 0 line dis pf2 0 lv2 vcc nc2 0 hv2 vboot L6599A
+
+.tran 20n 1.6m 0 20n
+.control
+set noaskquit
+echo "--- test 07: ISEN and DIS latches ---"
+run
+meas tran tpf WHEN v(pfc)=7.5 FALL=1
+let tdl = tpf-0.3m
+meas tran l1 MAX v(lvg) from=0.32m to=1m
+meas tran p1 MAX v(pfc) from=0.32m to=1m
+meas tran l2 MAX v(lvg) from=1.3m to=1.6m
+meas tran p2 MIN v(pfc) from=1.3m to=1.6m
+print tdl l1 p1 l2 p2
+if (tdl > 0.2u) & (tdl < 0.6u)
+  echo "PASS 07a ISEN > 1.5 V latches the IC off after ~300 ns (datasheet 300 typ, 400 max)"
+else
+  echo "FAIL 07a"
+end
+if (l1 < 0.5) & (p1 < 0.5)
+  echo "PASS 07b ISEN latch holds with ISEN back to 0: outputs low, PFC_STOP low"
+else
+  echo "FAIL 07b"
+end
+if (l2 > 12) & (p2 > 14)
+  echo "PASS 07c ISEN latch released by a Vcc cycle through UVLO"
+else
+  echo "FAIL 07c"
+end
+meas tran tds WHEN v(pf2)=7.5 FALL=1
+let vdis = 1.7+(tds-0.2m)/0.3m*0.3
+meas tran l3 MAX v(lv2) from=0.52m to=1m
+meas tran l4 MAX v(lv2) from=1.3m to=1.6m
+print vdis l3 l4
+if (abs(vdis-1.85) < 0.01)
+  echo "PASS 07d DIS threshold 1.85 V (datasheet 1.78 .. 1.92)"
+else
+  echo "FAIL 07d"
+end
+if (l3 < 0.5) & (l4 > 12)
+  echo "PASS 07e DIS latch holds with DIS back to 0 and is released by UVLO"
+else
+  echo "FAIL 07e"
+end
+quit
+.endc
+.end

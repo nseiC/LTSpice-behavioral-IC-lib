@@ -1,0 +1,136 @@
+* UC3854 test 03 - oscillator, ramp, PWM comparator, maximum duty cycle
+* CA Out is forced by a voltage source (the amplifier's follower can only
+* source, so the external source simply wins).
+.include uc3854_ng.lib
+Vcc  vcc 0 18
+Vena ena 0 7.5
+Rset rset 0 15k
+Ct   ct 0 1.5n
+Vca  caout 0 7
+Vvrms vrms 0 1.5
+Vpk  pk 0 1
+Cgt  gt 0 1n
+X1 0 pk caout isense mult iac vaout vrms vref ena vsense rset ss ct vcc gt UC3854
+Rvs vsense 0 1e9
+Ris isense 0 1e9
+Rmo mult 0 1e9
+.tran 5n 300u 0 5n
+.control
+set noaskquit
+echo "--- test 03: oscillator and PWM ---"
+run
+meas tran t1 WHEN v(ct)=3 RISE=5
+meas tran t2 WHEN v(ct)=3 RISE=15
+let f15 = 10/(t2-t1)
+meas tran vpk MAX v(ct) from=100u to=300u
+meas tran vvl MIN v(ct) from=100u to=300u
+meas tran g1 WHEN v(gt)=7 RISE=5
+meas tran g2 WHEN v(gt)=7 FALL=5
+meas tran g3 WHEN v(gt)=7 RISE=6
+let dmax15 = (g2-g1)/(g3-g1)*100
+print f15 vpk vvl dmax15
+if (abs(f15/55e3-1) < 0.05)
+  echo "PASS 03a F = 55 kHz at RSET = 15k, CT = 1.5 nF (datasheet 46 .. 62, 1.25/(RSET*CT) = 55.6)"
+else
+  echo "FAIL 03a"
+end
+if (abs(vvl-1.1) < 0.1)
+  echo "PASS 03b ramp valley 1.1 V (datasheet 0.8 .. 1.3)"
+else
+  echo "FAIL 03b"
+end
+if (abs(vpk-vvl-5.4) < 0.1)
+  echo "PASS 03c ramp peak-to-valley 5.4 V (datasheet 4.9 .. 5.9)"
+else
+  echo "FAIL 03c"
+end
+if (abs(dmax15-95) < 1.5)
+  echo "PASS 03d maximum duty cycle 95 % at VCA Out = 7 V (datasheet typ 95)"
+else
+  echo "FAIL 03d"
+end
+
+alter Rset = 8.2k
+run
+meas tran t1 WHEN v(ct)=3 RISE=5
+meas tran t2 WHEN v(ct)=3 RISE=25
+let f82 = 20/(t2-t1)
+print f82
+if (abs(f82/102e3-1) < 0.05)
+  echo "PASS 03e F = 102 kHz at RSET = 8.2k (datasheet 86 .. 118)"
+else
+  echo "FAIL 03e"
+end
+
+* ---- maximum duty vs RSET, datasheet curve: ~75..80 % at 3k, ~98 % at 50k
+alter Rset = 3k
+run
+meas tran g1 WHEN v(gt)=7 RISE=10
+meas tran g2 WHEN v(gt)=7 FALL=10
+meas tran g3 WHEN v(gt)=7 RISE=11
+let d3k = (g2-g1)/(g3-g1)*100
+print d3k
+if (d3k > 72) & (d3k < 83)
+  echo "PASS 03f max duty at RSET = 3k follows the datasheet curve (~75-80 %)"
+else
+  echo "FAIL 03f"
+end
+alter Rset = 50k
+alter Ct = 0.47n
+run
+meas tran g1 WHEN v(gt)=7 RISE=5
+meas tran g2 WHEN v(gt)=7 FALL=5
+meas tran g3 WHEN v(gt)=7 RISE=6
+let d50k = (g2-g1)/(g3-g1)*100
+print d50k
+if (d50k > 97) & (d50k < 99.5)
+  echo "PASS 03g max duty at RSET = 50k follows the datasheet curve (~98 %)"
+else
+  echo "FAIL 03g"
+end
+alter Ct = 1.5n
+
+* ---- duty vs CA Out: 0 % below the 1.1 V valley, linear on the ramp -------
+alter Rset = 15k
+alter Vca = 0.9
+run
+meas tran gmx MAX v(gt) from=100u to=300u
+print gmx
+if (gmx < 0.5)
+  echo "PASS 03h zero duty cycle with CA Out below the ramp valley"
+else
+  echo "FAIL 03h"
+end
+
+alter Vca = 3.8
+run
+meas tran g1 WHEN v(gt)=7 RISE=5
+meas tran g2 WHEN v(gt)=7 FALL=5
+meas tran g3 WHEN v(gt)=7 RISE=6
+let dmid = (g2-g1)/(g3-g1)*100
+* expected: (3.8-1.1)/5.4 of the charge time = 0.5 * 95 %
+print dmid
+if (abs(dmid-47.5) < 2)
+  echo "PASS 03i duty is linear in CA Out: 47.5 % at mid-ramp (3.8 V)"
+else
+  echo "FAIL 03i"
+end
+
+* ---- gate driver edges into 1 nF ------------------------------------------
+meas tran tr TRIG v(gt) VAL=1.45 RISE=5 TARG v(gt) VAL=13.05 RISE=5
+meas tran tf TRIG v(gt) VAL=13.05 FALL=5 TARG v(gt) VAL=1.45 FALL=5
+meas tran vgh MAX v(gt) from=100u to=300u
+print tr tf vgh
+if (tr < 50n) & (tf < 50n) & (tr > 20n) & (tf > 20n)
+  echo "PASS 03j GT Drv rise/fall ~35 ns into 1 nF (datasheet typ 35 ns)"
+else
+  echo "FAIL 03j"
+end
+if (abs(vgh-14.5) < 0.2)
+  echo "PASS 03k GT Drv clamped at 14.5 V with VCC = 18 V (datasheet 13 .. 18)"
+else
+  echo "FAIL 03k"
+end
+quit
+.endc
+.end

@@ -1,0 +1,48 @@
+* SG3524 - conversor BOOST 12 V -> 24 V, 50 kHz, malha fechada
+*
+* Saidas em PARALELO (CA=CB, EA=EB): o conversor chaveia na frequencia do
+* oscilador e o duty vai de 0 a 90 %.  O seguidor de emissor aciona a chave
+* low-side.
+*
+* Atencao: um boost tem zero no semiplano direito (aqui ~19 kHz), entao a
+* malha precisa cruzar bem abaixo disso.  A rede R-C do pino 9 abaixo e um
+* ponto de partida, NAO um projeto otimizado - compensacao e projeto seu,
+* o CI so fornece o amplificador de erro.
+*
+* Rode e olhe: v(vout), v(comp), v(ct), v(nsw)
+.include ../SG3524.lib
+Vin vin 0 12
+Rt rt 0 10k
+Ct ct 0 2n
+* realimentacao: 24V -> 2.5V
+Rfb1 vout inv 86k
+Rfb2 inv 0 10k
+Rd1 vref ni 5k
+Rd2 ni 0 5k
+Css ni 0 470n IC=0
+Rcz comp ncz 4.7k
+Ccz ncz 0 100n
+Cp  comp 0 220p
+* saidas em paralelo, seguidor de emissor aciona a chave low-side
+Rdrv ndrv 0 1k
+X1 inv ni osc clp clm rt ct 0 comp sd ndrv vin vin ndrv vin vref SG3524
+* estagio boost
+L1 vin nsw 100u
+S1 nsw nsr ndrv 0 PSW
+Rsr nsr rtn 0.05
+D1 nsw vout DFW
+Rsn nsw nsn 22
+Csn nsn 0 4.7n
+Cout vout ncc 470u IC=0
+* rede amortecedora: baixa o Q do filtro, sem ela nao ha margem de fase
+Rdmp vout nd 1.0
+Cdmp nd  rtn 1000u IC=0
+Resr ncc rtn 40m
+Rload vout rtn 48
+Rsense rtn 0 1m
+Vclp clp nsr 0
+Vclm clm 0 0
+.model PSW SW(Ron=0.1 Roff=1Meg Vt=5 Vh=1)
+.model DFW D(IS=5e-8 N=1.05 CJO=100p TT=20n)
+.tran 500n 15m 0 500n uic
+.end

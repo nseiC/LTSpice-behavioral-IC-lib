@@ -1,0 +1,52 @@
+* SG3524 - PUSH-PULL com transformador, 24 V -> 5 V / 2 A
+*
+* Esta e a aplicacao-assinatura do SG3524: saidas SEPARADAS, cada uma
+* acionando metade do primario com tomada central, alternadas em 180 graus e
+* com o pulso de blanking garantindo que nunca conduzam juntas.  Cada saida
+* roda na metade da frequencia do oscilador.
+*
+* RT=10k, CT=1.25n -> oscilador 80 kHz -> 40 kHz por saida.
+*
+* Rode e olhe: v(vout), v(ca), v(cb), v(ct), i(Lpa), i(Lpb)
+.include ../SG3524.lib
+Vin vin 0 24
+Rt rt 0 10k
+Ct ct 0 1.25n
+* realimentacao 5V -> 2.5V
+Rfb1 vout inv 10k
+Rfb2 inv 0 10k
+Rd1 vref ni 5k
+Rd2 ni 0 5k
+Css ni 0 470n IC=0
+Rcz comp ncz 2.2k
+Ccz ncz 0 100n
+Cp comp 0 220p
+* saidas SEPARADAS: push-pull de verdade, emissores no terra
+Vea ea 0 0
+Veb eb 0 0
+X1 inv ni osc clp clm rt ct 0 comp sd ea ca cb eb vin vref SG3524
+* transformador com tomada central no primario (metade B invertida)
+Lpa vin ca 100u
+Lpb cb vin 100u
+Ls  ns1 ns2 25u
+K1 Lpa Lpb 0.995
+K2 Lpa Ls 0.995
+K3 Lpb Ls 0.995
+Rmag vin 0 1e7
+* snubbers nos coletores
+Rsa ca nsa 47
+Csa nsa 0 2.2n
+Rsb cb nsb 47
+Csb nsb 0 2.2n
+* ponte retificadora + filtro LC
+Da ns1 nr DFW
+Db ns2 nr DFW
+Dc 0 ns1 DFW
+Dd 0 ns2 DFW
+Lf nr vout 22u
+Cf vout ncf 470u IC=0
+Rcf ncf 0 30m
+Rload vout 0 2.5
+.model DFW D(IS=5e-8 N=1.05 CJO=100p TT=20n)
+.tran 500n 12m 0 500n uic
+.end

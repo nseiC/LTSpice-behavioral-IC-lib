@@ -1,0 +1,219 @@
+* L6599A - o LLC de 150 W da AN3233 em sobrecarga: OCP e hiccup (OLP)
+*
+* O mesmo circuito do exemplo 02.  Em t = 70 ms (ja perto do regime a plena
+* carga) entra em paralelo com a carga um resistor que leva o total a 0.3 ohm
+* (~3 vezes a corrente nominal).  Sequencia esperada
+* (Secao 7.4 do datasheet, Figura 19 da AN3233):
+*   1. a corrente no tanque sobe, ISEN passa de 0.8 V: o Css e
+*      descarregado, a frequencia vai para perto de fstart (~250 kHz) e a
+*      corrente de pico fica praticamente constante;
+*   2. a cada disparo do OCP os 150 uA carregam o capacitor do DELAY;
+*   3. em 2 V o Css fica descarregado direto e os 150 uA ficam ligados;
+*   4. em 3.5 V o CI para, PFC_STOP vai a zero e o resistor do DELAY
+*      descarrega o capacitor; em 0.33 V o CI reparte com soft-start.
+*
+* Por que sobrecarga e nao curto seco: com a saida em 0 V o opto U4 (cujo
+* LED e alimentado pela saida) abre, o STBY cai por ~1 ms, o L6599A entra em
+* burst idle e volta SEM soft-start (o Css guarda a carga), numa frequencia
+* baixa, direto no curto: a corrente vai a dezenas de ampere, ISEN passa de
+* 1.5 V e o CI trava (latch ate o Vcc cair abaixo do UVLO) - exatamente o
+* que o datasheet manda fazer nesse caso.  Troque o 0.43 abaixo por 10m para
+* ver.
+*
+* DIFERENCA para a placa: C45 = 47 nF e R24 = 220k em vez de 220 nF e 1 Meg.
+* Com os valores da AN o tempo desligado seria TSTOP = 2.5*R24*C45 = 0.55 s
+* (Eq. 10) - simular isso a 40 ns por passo nao cabe num exemplo.  Com
+* 47 nF / 220k o ciclo inteiro fica em ~25 ms.
+*
+*
+* ---- descricao do circuito (igual ao exemplo 02) ----
+*
+*
+* Estagio ressonante da placa de avaliacao, com os valores da lista de
+* materiais e do esquematico (Figura 3) da AN3233:
+*   L6599AD:  CF = C17 = 330 pF, RFmin = R31 = 12k (fmin = 84 kHz),
+*             soft-start R44 = 6.2k + C18 = 4.7 uF (fstart = 247 kHz),
+*             DELAY C45 = 220 nF // R24 = 1 Meg, Cboot C19 = 100 nF,
+*             LINE: 3 x 2.2 Meg / 27k + C43 4.7 nF (liga em 386 V, desliga
+*             em 300 V - a AN3233 fala em 380 V / 300 V), DIS em R60 = 10k.
+*   Tanque:   Cr = C28 = 22 nF (do lado do terra, como pede o sensor de
+*             corrente capacitivo), transformador T1 1860.0034:
+*             Lp = 800 uH, Llk = 100 uH (ressonante integrada), primario
+*             34 espiras, secundario 2 + 2 com tomada central
+*             -> Lr = 100 uH, Lm = 700 uH, fr = 107 kHz, n = 17 fisico,
+*             15.9 no modelo APR (ver o tanque abaixo).
+*   ISEN:     sensor "sem perdas" da Figura 28b do datasheet: C27 = 220 pF,
+*             R41 = 100, D10/D11, R39 = 160 // C25 = 2.2 uF.
+*   Saida:    5 x 470 uF de polimero solido (C29, C30, C37, C49, C50),
+*             12 V / 12.5 A (0.96 ohm).
+*   Malha:    TSM1014 (amplificador CV, 1.25 V), divisor R49 = 91k /
+*             (R50 = 12k // R51 = 82k) -> 12.1 V, compensacao R48 = 47k +
+*             C34 = 100 nF, opto U3 (SFH617A-2) com R43 = 51 / C36 = 1 uF /
+*             R42 = 1k no anodo; do lado primario R34 = 27k + D17 do RFmin
+*             ao coletor, C41 = 22 nF, R32 = 47 ate o STBY, R36 = 1.8 Meg //
+*             C44 = 470 pF no STBY.
+*   Burst:    o circuito da Figura 2 da AN3233: R57 = 2 mohm + TSC101
+*             (ganho 100) + comparador CC do TSM1014 (R72 = 330k / R70 = 22k,
+*             R64 = 10 Meg de histerese, ~0.4 A) + opto U4 que liga RFMIN ao
+*             STBY enquanto a carga esta acima de ~5 W.
+*
+* Simplificacoes: Vcc vem de uma fonte de 15 V (na placa vem da bomba de
+* carga do PFC e do enrolamento auxiliar); o barramento de 400 V e uma fonte
+* (o PFC esta no exemplo 05); os MOSFETs (STF8NM50N) sao condutancias de 0.7 ohm
+* comandadas pelo Vgs, com diodo de corpo e Coss de 100 pF; os retificadores sincronos (SRK2000A +
+* STL140N4LLF5) sao diodos (~0.3 V a plena carga, mais que um SR real); o amplificador do TSM1014 e um
+* amp-op de um polo (100 dB, 1 MHz); o opto U3 e uma fonte de corrente com
+* CTR = 0.3 e o U4 uma chave.  A rede R16 / D16 / C6 no pino CF da placa ficou de fora.
+*
+* A simulacao liga o Vcc em t = 10 us com tudo descarregado, chega perto do
+* regime a plena carga e aplica a sobrecarga em 70 ms (leva ~1 h no ngspice).
+*
+* Rode e olhe: v(out), v(hb), i(Lr) (corrente ressonante), v(cf), v(css),
+* v(rfmin), v(stby), v(isen)
+
+.include ../L6599A.lib
+
+.param RLOAD=0.96 NEFF=15.9
+
+* --- alimentacao -------------------------------------------------------------
+Vbus bus 0 400
+Vcc  vcc 0 PWL(0 0 10u 0 60u 15)
+
+* --- meia-ponte ---------------------------------------------------------------
+* MOSFETs como condutancia suave de 0 a 1/0.7 ohm entre Vgs = 3 V e 5 V
+* (uma chave ideal "S" com diodo de corpo faz o passo de tempo despencar
+* nas comutacoes ZVS)
+Bh   bus hb I = V(bus,hb)*(max(0,min(1,(V(hvgm,hb)-3)/2))/0.7 + 1e-7)
+Dh   hb bus DBODY
+Coh  bus hb 100p
+Bl   hb 0 I = V(hb)*(max(0,min(1,(V(lvgm)-3)/2))/0.7 + 1e-7)
+Dl   0 hb DBODY
+Col  hb 0 100p
+Rgh  hvg hvgm 47
+Cgh  hvgm hb 1.5n
+Rgl  lvg lvgm 47
+Cgl  lvgm 0 1.5n
+
+* --- tanque e transformador ideal com Lm --------------------------------------
+* Modelo "tudo no primario" (APR) a partir do que a AN3233 da: Lp = 800 uH
+* (secundario aberto) e Ls = 100 uH (secundario em curto).  Com acoplamento
+* k = sqrt(1 - Ls/Lp) = 0.935 o modelo e Lr = Ls, Lm = Lp - Ls e uma relacao
+* IDEAL de k*Np/Ns = 0.935*17 = 15.9 (nao 17).  Com 17 o conversor nao chega
+* a 12 V a plena carga; com 15.9 ele opera logo acima da ressonancia, em
+* ~120 kHz, como a AN3233 descreve.
+Lr   hb pa 100u
+Lm   pa pb 700u
+Cr   pb 0 22n
+Es1  s1a 0 pa pb {1/NEFF}
+Vm1  s1a s1 0
+Fp1  pa pb Vm1 {1/NEFF}
+Es2  0 s2a pa pb {1/NEFF}
+Vm2  s2a s2 0
+Fp2  pa pb Vm2 {-1/NEFF}
+Rsec1 s1 0 10Meg
+Rsec2 s2 0 10Meg
+
+* --- retificacao sincrona (como diodos de baixa queda) e saida --------------
+* na placa a tomada central e o +12 V e os SR ficam no retorno; aqui a
+* tomada central e o terra e os "SR" vao para a saida (eletricamente igual)
+Dr1  s1 out DSR
+Dr2  s2 out DSR
+Co   out 0 2350u
+Resr out oc 2m
+Rsns oc  ol 2m
+Vio  ol  ol2 0
+Rload ol2 0 {RLOAD}
+* sobrecarga em t = 70 ms: 0.43 ohm em paralelo -> 0.3 ohm no total
+Rov  ol2 nov 0.43
+Ssc  nov 0 nsc 0 SSC
+Vsc  nsc 0 PWL(0 0 70m 0 70.001m 1)
+.model SSC SW(Ron=1m Roff=1Meg Vt=0.5 Vh=0)
+
+* --- sensor de corrente capacitivo (ISEN) ------------------------------------
+C27  pb n27 220p
+R41  n27 n10 100
+D10  n10 isen D4148
+D11  0 n10 D4148
+R39  isen 0 160
+C25  isen 0 2.2u
+
+* --- L6599AD -------------------------------------------------------------------
+Cf   cf 0 330p
+R31  rfmin 0 12k
+R44  rfmin css 6.2k
+C18  css 0 4.7u
+C45  delay 0 47n
+R24  delay 0 220k
+Rh1  bus l1 2.2Meg
+Rh2  l1 l2 2.2Meg
+Rh3  l2 line 2.2Meg
+R10  line 0 27k
+C43  line 0 4.7n
+R60  dis 0 10k
+C19  vboot hb 100n
+Rpfc vcc pfcstop 100k
+C40  vcc 0 100n
+*   CSS DELAY CF RFMIN STBY ISEN LINE DIS PFC_STOP GND LVG VCC NC OUT HVG VBOOT
+X1   css delay cf rfmin stby isen line dis pfcstop 0 lvg vcc nc hb hvg vboot L6599A
+
+* --- realimentacao: lado primario --------------------------------------------
+R34  rfmin nd17 27k
+D17  nd17 fbc D4148
+C41  fbc 0 22n
+R32  fbc stby 47
+R36  stby 0 1.8Meg
+C44  stby 0 470p
+* U3: fototransistor com saturacao; CTR = 0.3, o do SFH617A-2 com ~0.1 mA
+* no LED (curva CTR x IF do fabricante)
+Bu3  fbc 0 I = 0.3*max(0,I(Vled3))*min(1,uramp(V(fbc))/0.2)
+* U4: liga RFMIN ao STBY enquanto a carga e alta - saturado, uma chave de
+* ~200 ohm quando o LED dele conduz mais que ~50 uA
+Bu4  rfmin stby I = V(rfmin,stby)/200*max(0,min(1,(I(Vled4)-30u)/40u))
+
+* --- realimentacao: lado secundario (TSM1014, TSC101) ------------------------
+R43  out n36 51
+C36  n36 0 1u
+R42  n36 la3 1k
+D3l  la3 lk3 DLED
+Vled3 lk3 cvout 0
+R49  out cvm 91k
+R50  cvm 0 12k
+R51  cvm 0 82k
+R48  cvout n48 47k
+C34  n48 cvm 100n
+* amplificador CV: 100 dB, 1 MHz, saida de 0.1 V ate Vout (o Vcc do TSM1014)
+Bcv  0 ncv I = 1m*(1.25-V(cvm))
+Rcv  ncv 0 100Meg
+Ccv  ncv 0 159p
+* grampo do no interno (sem ele o integrador "enrola" a 1e5 V na partida,
+* com a saida em 0 V, e leva dezenas de ms para voltar)
+Bcvl ncv 0 I = uramp(V(ncv)-max(0.2,V(out))) - uramp(-V(ncv))
+Bcvo ncvo 0 V = max(0.1, min(uramp(V(out)), V(ncv)))
+Rcvo ncvo cvout 20
+* TSC101: 100 x queda no R57 (2 mohm), filtro R71 = 1k / C32 = 1 uF
+Btsc ntsc 0 V = 100*(V(oc)-V(ol))
+R71  ntsc ccm 1k
+C32  ccm 0 1u
+* comparador CC: referencia 1.25 V * 22k/(330k+22k) = 78 mV (~0.39 A)
+R72  vr125 ccp 330k
+Vr125 vr125 0 1.25
+R70  ccp 0 22k
+C47  ccp 0 1n
+R64  ccout ccp 10Meg
+Bcc  ncco 0 V = 0.1 + uramp(V(out)-1.1)*max(0,min(1,(V(ccp)-V(ccm))*1000+0.5))
+Rcco ncco ccout 100
+R68  out la4 39k
+D4l  la4 lk4 DLED
+Vled4 lk4 ccout 0
+
+.model DBODY  D(IS=1e-11 N=1.2 RS=0.05 CJO=10p)
+* SR como diodo: N = 1 (um N menor, para imitar a queda baixa de um MOSFET,
+* deixa a exponencial tao ingreme que o passo de tempo despenca)
+.model DSR    D(IS=1e-3 N=1 RS=3m CJO=1n)
+.model D4148  D(IS=2.5n N=1.8 RS=0.5 CJO=4p TT=5n)
+.model DLED   D(IS=1e-18 N=1.5 RS=5)
+
+* gear: amortece o "ringing" numerico das comutacoes da meia-ponte
+.options method=gear
+.tran 40n 115m 0 40n
+.end

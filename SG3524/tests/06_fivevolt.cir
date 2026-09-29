@@ -1,0 +1,45 @@
+* SG3524 test 06 - 5 V operation (pins 15 and 16 tied) and paralleled outputs
+.include sg3524_ng.lib
+V5 v5 0 5
+Rt rt 0 10k
+Ct ct 0 10n
+Rl v5 cc 2k
+Vea ea 0 0
+Vcmp comp 0 3.5
+Vclp clp 0 0
+Vclm clm 0 0
+* CA and CB tied together, EA and EB tied together -> single ended
+X1 inv ni osc clp clm rt ct 0 comp sd ea cc cc ea v5 v5 SG3524
+.tran 10n 1m 0 10n
+.control
+set noaskquit
+echo "--- test 06: 5 V operation + paralleled outputs ---"
+run
+meas tran ctpk MAX v(ct) from=0.5m to=0.9m
+meas tran per TRIG v(ct) VAL=3.0 RISE=4 TARG v(ct) VAL=3.0 RISE=8
+let p1 = per/4
+print ctpk p1
+if (abs(ctpk-4.2) < 0.05)
+  echo "PASS 06a oscillator runs normally with VIN = VREF = 5 V (regulator cannot sink)"
+else
+  echo "FAIL 06a"
+end
+meas tran f1 WHEN v(cc)=3 FALL=5
+meas tran r1 WHEN v(cc)=3 RISE=6
+meas tran f2 WHEN v(cc)=3 FALL=6
+let dpar = (r1-f1)/(f2-f1)*100
+let ppar = f2-f1
+print dpar ppar
+if (abs(dpar-90) < 2)
+  echo "PASS 06b paralleled outputs reach 90 % duty (datasheet: 0-90 % single ended)"
+else
+  echo "FAIL 06b"
+end
+if (abs(ppar/p1 - 1) < 0.05)
+  echo "PASS 06c paralleled outputs switch at the oscillator frequency, not half of it"
+else
+  echo "FAIL 06c"
+end
+quit
+.endc
+.end

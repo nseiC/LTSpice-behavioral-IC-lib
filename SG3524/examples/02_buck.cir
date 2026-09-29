@@ -1,0 +1,72 @@
+* SG3524 - conversor BUCK 20 V -> 5 V / 1 A, ~90 kHz, malha fechada
+*
+* Saidas em PARALELO (CA=CB, EA=EB): o conversor chaveia na frequencia do
+* oscilador, duty de 0 a 90 %.  O seguidor de emissor aciona a chave high-side.
+*
+* Mostra: partida suave, regulacao, degrau de carga 1 A -> 2 A em 9 ms.
+*
+* Soft-start: Css no pino 2 faz a referencia subir devagar.  O SG3524 nao tem
+* soft-start interno; sem isso a saida passa de 12 V na partida.
+*
+* Compensacao: Rcz + Ccz + Cp no pino 9.  E um PONTO DE PARTIDA, nao um
+* projeto otimizado - o CI fornece so o amplificador de erro (gm = 2 mA/V,
+* saida de alta impedancia), a rede e sua.  Lembre que o pino 9 so fornece
+* +-200 uA, entao Ccz grande limita o slew (aqui 200uA/470n = 0,43 V/ms).
+*
+* Rede R-C amortecedora (Rdmp/Cdmp) em paralelo com a saida: baixa o Q do
+* filtro LC, sem ela nao ha margem de fase decente com compensacao tipo II.
+*
+* Rode e olhe: v(vout), v(comp), v(ct), v(nsw)
+
+.include ../SG3524.lib
+
+Vin vin 0 20
+
+* --- temporizacao ----------------------------------------------------------
+Rt  rt 0 10k
+Ct  ct 0 1n
+
+* --- realimentacao 5 V -> 2.5 V e soft-start -------------------------------
+Rfb1 vout inv 10k
+Rfb2 inv  0   10k
+Rd1  vref ni 5k
+Rd2  ni   0  5k
+Css  ni   0  470n IC=0
+
+* --- compensacao no pino 9 -------------------------------------------------
+Rcz  comp ncz 10k
+Ccz  ncz  0   470n
+Cp   comp 0   220p
+
+* --- CI, saidas em paralelo, emissores juntos acionando a chave ------------
+Rdrv ndrv 0 1k
+X1 inv ni osc clp clm rt ct 0 comp sd ndrv vin vin ndrv vin vref SG3524
+
+* --- estagio de potencia ---------------------------------------------------
+S1  vin nsw ndrv 0 PSW
+D1  0 nsw DFW
+Rsn nsw nsn 10
+Csn nsn 0 10n
+L1  nsw nla 47u
+Rdcr nla vout 30m
+Resr vout nc 30m
+Cout nc  0   100u IC=0
+Rdmp vout nd 0.33
+Cdmp nd 0 470u IC=0
+Rload vout rtn 5
+
+* --- degrau de carga 1 A -> 2 A em 9 ms ------------------------------------
+Rstep vout nstp 5
+Sstep nstp rtn nstpc 0 PSW
+Vstp nstpc 0 PWL(0 0 9m 0 9.002m 10 20m 10)
+
+* --- sensor de corrente no retorno: 200 mV / 0.05 R = limite em 4 A --------
+Rsense rtn 0 0.05
+Vclp clp rtn 0
+Vclm clm 0 0
+
+.model PSW SW(Ron=0.1 Roff=1Meg Vt=5 Vh=1)
+.model DFW D(IS=5e-8 N=1.05 CJO=100p TT=20n)
+
+.tran 200n 14m 0 200n uic
+.end

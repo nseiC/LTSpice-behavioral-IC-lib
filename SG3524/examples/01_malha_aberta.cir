@@ -1,0 +1,39 @@
+* SG3524 - demonstracao em malha aberta (push-pull)
+*
+* Mostra tudo que o CI faz, sem malha de realimentacao:
+*   - rampa em CT de 0,6 V a 4,2 V, periodo = RT*CT = 100 us (10 kHz)
+*   - pulso de blanking em CT / pino 3, 0,5 us (tempo morto)
+*   - saidas A e B alternadas, 180 graus, nunca sobrepostas
+*   - duty controlado pela tensao no pino 9 (COMP)
+*
+* Rode e olhe: v(ct), v(osc), v(ca), v(cb), v(comp)
+*
+* LTspice : troque ".include ../SG3524.lib" pelo caminho da sua lib.
+* ngspice : ../tests/run_tests.sh gera a copia compativel (sg3524_ng.lib).
+
+.include ../SG3524.lib
+
+Vin  vin 0 20
+
+* --- temporizacao: RT = 10k, CT = 10n  ->  100 us  ->  10 kHz --------------
+Rt   rt 0 10k
+Ct   ct 0 10n
+
+* --- cargas de coletor, emissores no terra (saida coletor aberto) ----------
+Rla  vin ca 2k
+Rlb  vin cb 2k
+Vea  ea 0 0
+Veb  eb 0 0
+
+* --- pino 9 varrido de 1,0 V (duty zero) ate 3,5 V (duty maximo) ----------
+Vcomp comp 0 PWL(0 1.0  4m 3.5)
+
+* --- limite de corrente e shutdown desligados -----------------------------
+Vclp clp 0 0
+Vclm clm 0 0
+Vsd  sd  0 0
+
+X1 inv ni osc clp clm rt ct 0 comp sd ea ca cb eb vin vref SG3524
+
+.tran 20n 4m 0 20n
+.end

@@ -1,0 +1,97 @@
+* L6599A test 04 - gate drivers and synchronous bootstrap diode
+.include l6599a_ng.lib
+Vcc  vcc 0 15
+Vbt  vboot 0 15
+Rf   rfmin 0 12k
+Cf   cf 0 470p
+Vst  stby 0 2
+Vln  line 0 2
+Cl   lvg 0 1n
+Ch   hvg 0 1n
+Ilv  lvg 0 0
+Ihv  hvg 0 0
+Rdl  delay 0 1Meg
+X1 css delay cf rfmin stby 0 line 0 nc1 0 lvg vcc nc 0 hvg vboot L6599A
+
+* second part: bootstrap diode charging a source held at 12 V
+Vc2  vc2 0 15
+Vb2  vb2 0 12
+Rf2  rf2 0 12k
+Cf2  cf2 0 470p
+Vln2 ln2 0 2
+Cl2  lv2 0 1n
+X2 cs2 dl2 cf2 rf2 rf2 0 ln2 0 nc2 0 lv2 vc2 nc3 0 hv2 vb2 L6599A
+Rdl2 dl2 0 1Meg
+
+* third part: unpowered, 2 mA into LVG
+Vc3  vc3 0 0
+Il3  0 lv3 2m
+X3 cs3 dl3 cf3 rf3 st3 0 ln3 0 nc4 0 lv3 vc3 nc5 0 hv3 vb3 L6599A
+Rrf3 rf3 0 12k
+Rcf3 cf3 0 1Meg
+Rst3 st3 0 1Meg
+Rln3 ln3 0 1Meg
+Rdl3 dl3 0 1Meg
+Rvb3 vb3 0 1Meg
+
+.tran 2n 150u 0 2n
+.control
+set noaskquit
+echo "--- test 04: gate drivers ---"
+run
+meas tran trl TRIG v(lvg) VAL=1.33 RISE=5 TARG v(lvg) VAL=12.0 RISE=5
+meas tran tfl TRIG v(lvg) VAL=12.0 FALL=5 TARG v(lvg) VAL=1.33 FALL=5
+meas tran trh TRIG v(hvg) VAL=1.33 RISE=5 TARG v(hvg) VAL=12.0 RISE=5
+meas tran tfh TRIG v(hvg) VAL=12.0 FALL=5 TARG v(hvg) VAL=1.33 FALL=5
+meas tran ib2 MAX i(Vb2) from=50u to=150u
+let ibm = ib2*1e3
+meas tran vl3 AVG v(lv3) from=50u to=150u
+print trl tfl trh tfh ibm vl3
+if (trl > 45n) & (trl < 75n) & (trh > 45n) & (trh < 75n)
+  echo "PASS 04a LVG / HVG rise time ~60 ns into 1 nF (datasheet 60 typ)"
+else
+  echo "FAIL 04a"
+end
+if (tfl > 20n) & (tfl < 40n) & (tfh > 20n) & (tfh < 40n)
+  echo "PASS 04b LVG / HVG fall time ~30 ns into 1 nF (datasheet 30 typ)"
+else
+  echo "FAIL 04b"
+end
+* (15 - 12 - 0.6) / 150 = 16 mA
+if (abs(ibm-16) < 1.5)
+  echo "PASS 04c synchronous bootstrap diode: 150 ohm + 0.6 V, on with LVG (datasheet RDS(on) 150 typ)"
+else
+  echo "FAIL 04c"
+end
+if (abs(vl3-1.1) < 0.1)
+  echo "PASS 04d LVG UVLO pull-down 1.1 V at 2 mA with Vcc = 0 (datasheet 1.1 max)"
+else
+  echo "FAIL 04d"
+end
+
+alter Ilv dc=5m
+alter Ihv dc=5m
+run
+meas tran vlh MAX v(lvg) from=50u to=150u
+meas tran vhh MAX v(hvg) from=50u to=150u
+print vlh vhh
+if (abs(vlh-13.3) < 0.1) & (abs(vhh-13.3) < 0.1)
+  echo "PASS 04e LVG / HVG high 13.3 V at -5 mA (datasheet 12.8 min, 13.3 typ)"
+else
+  echo "FAIL 04e"
+end
+
+alter Ilv dc=-200m
+alter Ihv dc=-200m
+run
+meas tran vll MIN v(lvg) from=50u to=150u
+meas tran vhl MIN v(hvg) from=50u to=150u
+print vll vhl
+if (vll < 1.5) & (vll > 0.8) & (vhl < 1.5) & (vhl > 0.8)
+  echo "PASS 04f LVG / HVG low 1.4 V sinking 200 mA (datasheet 1.5 max)"
+else
+  echo "FAIL 04f"
+end
+quit
+.endc
+.end

@@ -1,0 +1,76 @@
+* L6599A test 06 - delayed shutdown (OLP) on the DELAY pin, Figure 29
+* An overload (ISEN = 0.85 V) lasts from 0.5 ms to 0.66 ms: long enough to
+* charge CDelay (10 nF) past 2.05 V but not to 3.5 V.  From 2.05 V on the
+* 150 uA generator must stay on by itself, Css must stay discharged and
+* PFC_STOP must go low; at 3.5 V the IC stops and the generator turns off;
+* RDelay (1 Meg) then discharges CDelay and the IC soft-restarts at 0.33 V:
+*     TSTOP = RDelay*CDelay*ln(3.5/0.33) = 23.6 ms     (Eq. 10)
+.include l6599a_ng.lib
+Vcc  vcc 0 15
+Vbt  vboot 0 15
+Rf   rfmin 0 12k
+Rss  rfmin css 6.2k
+Css  css 0 10n
+Cf   cf 0 470p
+Vst  stby 0 2
+Vln  line 0 2
+Vis  isen 0 PWL(0 0 0.5m 0 0.501m 0.85 0.66m 0.85 0.661m 0)
+Cl   lvg 0 1n
+Ch   hvg 0 1n
+Cdl  delay 0 10n
+Rdl  delay 0 1Meg
+Rpf  pfc vcc 10k
+X1 css delay cf rfmin stby isen line 0 pfc 0 lvg vcc nc 0 hvg vboot L6599A
+.tran 20n 26m 0 20n
+.control
+set noaskquit
+echo "--- test 06: OLP / DELAY ---"
+run
+meas tran ta WHEN v(delay)=0.5 RISE=1
+meas tran tb WHEN v(delay)=1.5 RISE=1
+let ich = 10n*1/(tb-ta)*1e6
+meas tran t2 WHEN v(delay)=2.05 RISE=1
+meas tran t35 WHEN v(delay)=3.5 RISE=1
+meas tran csx MAX v(css) from=0.67m to=0.73m
+meas tran pfl MIN v(pfc) from=0.67m to=0.73m
+meas tran pf0 MIN v(pfc) from=0.1m to=0.49m
+meas tran lof MAX v(lvg) from=0.8m to=20m
+meas tran trs WHEN v(lvg)=7 RISE=1 from=1m
+let tstop = trs-t35
+let tstopc = 1Meg*10n*ln(3.5/0.33)
+let trs1 = trs+10u
+meas tran cssr FIND v(css) AT=$&trs1
+print ich t2 t35 csx pfl pf0 lof tstop tstopc cssr
+if (abs(ich-150) < 10)
+  echo "PASS 06a CDelay charged by 150 uA during the overload (datasheet 100 .. 200)"
+else
+  echo "FAIL 06a"
+end
+if (t35 > 0.67m) & (t35 < 0.8m) & (csx < 0.1)
+  echo "PASS 06b past 2.05 V the generator stays on and Css stays discharged with ISEN back to 0"
+else
+  echo "FAIL 06b"
+end
+if (pfl < 0.5) & (pf0 > 14)
+  echo "PASS 06c PFC_STOP open in normal operation, low from DELAY = 2 V"
+else
+  echo "FAIL 06c"
+end
+if (lof < 0.5)
+  echo "PASS 06d IC stops switching at DELAY = 3.5 V (datasheet 3.35 .. 3.65)"
+else
+  echo "FAIL 06d"
+end
+if (abs(tstop/tstopc-1) < 0.05)
+  echo "PASS 06e restart when DELAY falls to 0.33 V: TSTOP = RC*ln(3.5/0.33) (Eq. 10)"
+else
+  echo "FAIL 06e"
+end
+if (cssr < 0.3)
+  echo "PASS 06f restart is a soft-start (Css starts from 0 V)"
+else
+  echo "FAIL 06f"
+end
+quit
+.endc
+.end

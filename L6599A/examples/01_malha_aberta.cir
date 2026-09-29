@@ -1,0 +1,36 @@
+* L6599A - malha aberta: oscilador, tempo morto, soft-start e controle de
+* frequencia pela corrente do RFMIN
+*
+* Condicoes do datasheet: Vcc = 15 V, CF = 470 pF, RFmin = 12k, 1 nF nas
+* duas saidas, VBOOT = 15 V acima do OUT (aterrado).  Mais:
+*   - ramo de soft-start Rss = 6.2k + Css = 220 nF (tau = 1.4 ms):
+*       fstart = 1/(3*CF*(RFmin//Rss)) = 173 kHz  ->  fmin = 1/(3*CF*RFmin)
+*       = 59 kHz  (Eq. 1 e Eq. 4 do datasheet)
+*   - de 8 ms a 12 ms um "fototransistor" (fonte de corrente) puxa de 0 a
+*     400 uA do RFMIN: IR vai de 167 uA a 567 uA e a frequencia sobe na
+*     mesma proporcao (KM = 1), de 59 kHz a ~200 kHz.
+*
+* Rode e olhe: v(cf), v(lvg), v(hvg), v(css), v(rfmin), i(Vrf)
+
+.include ../L6599A.lib
+
+Vcc  vcc 0 PWL(0 0 10u 0 20u 15)
+Vbt  vboot 0 15
+Vrf  rfmin rfm 0
+R31  rfm 0 12k
+Rss  rfm css 6.2k
+Css  css 0 220n
+Iopt rfm 0 PWL(0 0 8m 0 12m 400u)
+Cf   cf 0 470p
+Vst  stby 0 2
+Vln  line 0 2
+Cl   lvg 0 1n
+Ch   hvg 0 1n
+Cdl  delay 0 220n
+Rdl  delay 0 1Meg
+Rpf  pfc vcc 10k
+*   CSS DELAY CF RFMIN STBY ISEN LINE DIS PFC_STOP GND LVG VCC NC OUT HVG VBOOT
+X1   css delay cf rfmin stby 0   line 0   pfc      0   lvg vcc nc 0   hvg vboot L6599A
+
+.tran 10n 12m 0 10n
+.end

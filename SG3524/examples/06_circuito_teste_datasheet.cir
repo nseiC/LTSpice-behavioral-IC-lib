@@ -1,0 +1,77 @@
+* SG3524 - CIRCUITO DE TESTE DE BANCADA (Figura 4 do datasheet Philips)
+*
+* Transcricao da "Figure 4. Test Circuit", pagina 3 do datasheet
+* Philips Semiconductors SG3524, 1994 Aug 31 (853-0891 13721).
+*
+* E um banco de teste em MALHA ABERTA: o amplificador de erro fica em ganho
+* unitario (pino 9 ligado ao pino 1), entao V(pino 9) = V(pino 2), e voce
+* varre o duty cycle de 0 a 45 % girando o potenciometro de 10k.
+*
+* PARAMETROS PARA VARRER NA BANCADA / NA SIMULACAO:
+*   DUTYPOT  0..1  posicao do potenciometro de 10k  -> duty 0..45 % por saida
+*   CLPOT    0..1  posicao do potenciometro de 1k   -> limite de corrente
+*   SDSW     0/1   chave de shutdown (0 = aberta = normal, 1 = fechada = off)
+*
+* RT = 4.7k e CT = 22n dao periodo = RT*CT = 103 us -> ~9.7 kHz.
+*
+* Por que nao 4.7 nF para bater os 20 kHz das condicoes do datasheet: o
+* tempo morto vale 0,5 us por 10 nF de CT, e o datasheet avisa que abaixo
+* de ~0,5 us "a pulse width below approximately 0.5us may allow false
+* triggering of one output by removing the blanking pulse prior to the
+* flip-flop's reaching a stable state".  Com 22 nF sobra o dobro de margem.
+* Se quiser mesmo 20 kHz, use RT = 2.2k com CT = 22n.
+
+.include ../SG3524.lib
+
+.param DUTYPOT=0.75
+.param CLPOT=0
+.param SDSW=0
+
+* --- alimentacao: VIN 8-40 V, amperimetro Is em serie (pino 15) ------------
+Vin   vin 0 20
+Vis   vin nvin 0          ; amperimetro Is - a corrente total do CI e I(Vis)
+
+* --- referencia: 0.1 uF de bypass no pino 16, alimenta os divisores --------
+Cbyp  vref 0 0.1u
+
+* --- oscilador: RT no pino 6, CT no pino 7 --------------------------------
+Rt    rt 0 4.7k
+Ct    ct 0 22n
+
+* --- amplificador de erro em GANHO UNITARIO: pino 9 ligado ao pino 1 ------
+* (os pinos 1 e 9 entram no mesmo no "comp" no X1 abaixo)
+* divisor de duty a partir de VREF: 2k + pot 10k + 2k
+Rda   vref  nda 2k
+Rdb   nda   ni  {10k*(1-DUTYPOT)}    ; parte de cima do pot
+Rdc   ni    ndc {10k*DUTYPOT}        ; parte de baixo do pot
+Rdd   ndc   0   2k
+
+* --- shutdown: VREF -> resistor -> chave -> pino 10 -----------------------
+* (o datasheet nao imprime o valor desse resistor; 2k2 e uma escolha segura,
+*  o pino 10 ja tem 10k interno para o terra)
+Rsd   vref nsd 2k2
+Rsw   nsd  sd  {1m + (1-SDSW)*1G}      ; SDSW=1 fecha, SDSW=0 abre
+
+* --- limite de corrente: VREF -> 10k -> pot 1k -> terra; cursor no pino 4 --
+* pino 5 vai direto ao terra
+Rcla  vref ncl  10k
+Rclb  ncl  clp  {1k*(1-CLPOT)}
+Rclc  clp  0    {1k*CLPOT + 1m}
+* pino 5 vai direto ao terra (no 0 no X1)
+
+* --- saidas: 2k 1W de VIN para cada coletor; emissores no terra -----------
+Rca   vin ca 2k
+Rcb   vin cb 2k
+Vea   ea 0 0
+Veb   eb 0 0
+
+*  pino1  pino2 pino3 pino4 pino5 6  7  8  9    10 11 12 13 14 15   16
+X1 comp   ni    osc   clp   0     rt ct 0  comp sd ea ca cb eb nvin vref SG3524
+
+* PONTOS DE MEDIDA (mesmos jaques da Figura 4):
+*   v(nvin) VIN   i(Vis) Is    v(vref) VREF   v(osc) OSC OUT
+*   v(ct) RAMP    v(ni) N.I.   v(comp) INV. = COMP (ganho unitario)
+*   v(sd) SHUTDOWN   v(clp) CURRENT LIMIT   v(ca) v(cb) OUTPUTS
+
+.tran 50n 4m 0 50n     ; maxstep ~ 1/20 do tempo morto
+.end

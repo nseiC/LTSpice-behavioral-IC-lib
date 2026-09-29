@@ -1,0 +1,96 @@
+* L6599A test 03 - oscillator frequency, ramp, duty cycle, dead time
+.include l6599a_ng.lib
+Vcc  vcc 0 15
+Vbt  vboot 0 15
+Rf   rfmin 0 12k
+Cf   cf 0 470p
+Vst  stby 0 2
+Vln  line 0 2
+Cl   lvg 0 1n
+Ch   hvg 0 1n
+Rdl  delay 0 1Meg
+X1 css delay cf rfmin stby 0 line 0 nc1 0 lvg vcc nc 0 hvg vboot L6599A
+.tran 5n 300u 0 5n
+.control
+set noaskquit
+echo "--- test 03: oscillator ---"
+run
+meas tran t1 WHEN v(cf)=2 RISE=5
+meas tran t2 WHEN v(cf)=2 RISE=15
+let f12 = 10/(t2-t1)
+meas tran vpk MAX v(cf) from=100u to=300u
+meas tran vvl MIN v(cf) from=100u to=300u
+meas tran l1 WHEN v(lvg)=6.65 RISE=5
+meas tran l2 WHEN v(lvg)=6.65 FALL=5
+meas tran h1 WHEN v(hvg)=6.65 RISE=1 from=$&l2
+meas tran h2 WHEN v(hvg)=6.65 FALL=1 from=$&h1
+meas tran l3 WHEN v(lvg)=6.65 RISE=1 from=$&h2
+let tonl = l2-l1
+let tonh = h2-h1
+let duty = tonl/(tonl+tonh)*100
+let dtlh = (h1-l2)
+let dthl = (l3-h2)
+print f12 vpk vvl duty dtlh dthl
+if (abs(f12/60e3-1) < 0.03)
+  echo "PASS 03a F = 60 kHz at RFmin = 12k, CF = 470 pF (datasheet 58.2 .. 61.8)"
+else
+  echo "FAIL 03a"
+end
+if (abs(vpk-3.9) < 0.15) & (abs(vvl-0.9) < 0.1)
+  echo "PASS 03b ramp peak ~3.8 V / valley ~0.85 V (datasheet 3.9 / 0.9 typ, Fig. 10 ~3.75 / ~0.85)"
+else
+  echo "FAIL 03b"
+end
+if (abs(duty-50) < 1)
+  echo "PASS 03c LVG / HVG duty cycle 50 % (datasheet 48 .. 52)"
+else
+  echo "FAIL 03c"
+end
+if (dtlh > 0.25u) & (dtlh < 0.35u) & (dthl > 0.25u) & (dthl < 0.35u)
+  echo "PASS 03d dead time 0.3 us between HVG and LVG, both edges (datasheet 0.2 .. 0.4)"
+else
+  echo "FAIL 03d"
+end
+
+alter Rf = 2.7k
+run
+meas tran t1 WHEN v(cf)=2 RISE=10
+meas tran t2 WHEN v(cf)=2 RISE=50
+let f27 = 40/(t2-t1)
+print f27
+if (abs(f27/250e3-1) < 0.03)
+  echo "PASS 03e F = 250 kHz at RFmin = 2.7k (datasheet 240 .. 260)"
+else
+  echo "FAIL 03e"
+end
+
+* ---- Eq. 1 in the middle of the range: 5k / 470 pF -> 141.8 kHz ----------
+alter Rf = 5k
+run
+meas tran t1 WHEN v(cf)=2 RISE=10
+meas tran t2 WHEN v(cf)=2 RISE=30
+let f5k = 20/(t2-t1)
+let feq = 1/(3*470p*5k)
+print f5k feq
+if (abs(f5k/feq-1) < 0.04)
+  echo "PASS 03f F follows Eq. 1, 1/(3*CF*RFmin), within 4 % at 5k / 470 pF"
+else
+  echo "FAIL 03f"
+end
+
+* ---- top of Figure 9: 220 pF, 1k -> ~1 MHz -------------------------------
+alter Cf = 220p
+alter Rf = 1k
+run
+meas tran t1 WHEN v(cf)=2 RISE=20
+meas tran t2 WHEN v(cf)=2 RISE=120
+let f1m = 100/(t2-t1)
+print f1m
+if (f1m > 0.85e6) & (f1m < 1.15e6)
+  echo "PASS 03g ~1 MHz at 1k / 220 pF, top of the curves of Figure 9"
+else
+  echo "FAIL 03g"
+end
+quit
+.endc
+.end

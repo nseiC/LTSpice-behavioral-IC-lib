@@ -1,0 +1,192 @@
+* UC3854 test 05 - voltage amplifier, current amplifier and soft start
+* CT is held by a source so the oscillator is frozen and .op is well defined.
+.include uc3854_ng.lib
+Vcc  vcc 0 18
+Vena ena 0 7.5
+Rset rset 0 15k
+Vct  ct 0 0
+Vvrms vrms 0 1.5
+Vpk  pk 0 1
+Rgt  gt 0 1e9
+Vvs  vsense 0 DC 7.5 AC 1
+Vss  ss 0 7.5
+Vmo  mult 0 0
+Vis  isense 0 DC 0 AC 0
+X1 0 pk caout isense mult iac vaout vrms vref ena vsense rset ssx ct vcc gt UC3854
+Rssx ssx ss 0.001
+Rlva vaout 0 1e12
+Rlca caout 0 1e12
+.control
+set noaskquit
+echo "--- test 05: amplifiers and soft start ---"
+
+* ---- voltage amplifier DC gain: two points in the linear region ---------
+alter Vvs dc = 7.49998
+op
+let va1 = v(vaout)
+print va1
+alter Vvs dc = 7.49996
+op
+let va2 = v(vaout)
+print va2
+let ava = (va2-va1)/20e-6
+print ava
+* can't compare vectors from two plots directly - compute here
+if (abs(v(vaout)-4.0) < 0.2)
+  echo "PASS 05a voltage amp open-loop gain 100 dB (VA Out 4.0 V at 40 uV, datasheet 70 .. 100 dB)"
+else
+  echo "FAIL 05a"
+end
+
+* ---- voltage amplifier unity-gain frequency (datasheet curve ~1 MHz) ----
+alter Vvs dc = 7.49997
+ac dec 20 1 10Meg
+meas ac fu WHEN vdb(vaout)=0 FALL=1
+meas ac g100 FIND vdb(vaout) AT=100
+print fu g100
+if (fu > 0.7e6) & (fu < 1.4e6) & (abs(g100-80) < 1.5)
+  echo "PASS 05b voltage amp 80 dB at 100 Hz, unity gain ~1 MHz (datasheet curve)"
+else
+  echo "FAIL 05b"
+end
+
+* ---- voltage amplifier output clamp and short-circuit current ------------
+alter Vvs dc = 0
+op
+print v(vaout)
+if (abs(v(vaout)-5.8) < 0.05)
+  echo "PASS 05c voltage amp output clamped at 5.8 V (datasheet swing 0.5 .. 5.8 V)"
+else
+  echo "FAIL 05c"
+end
+alter Rlva = 0.01
+op
+let isc = v(vaout)/0.01*1000
+print isc
+if (abs(isc-20) < 1)
+  echo "PASS 05d voltage amp short-circuit current 20 mA (datasheet 5 .. 36, typ 20)"
+else
+  echo "FAIL 05d"
+end
+alter Rlva = 1e12
+
+alter Vvs dc = 10
+op
+print v(vaout)
+if (abs(v(vaout)-0.5) < 0.05)
+  echo "PASS 05e voltage amp low swing 0.5 V"
+else
+  echo "FAIL 05e"
+end
+
+* ---- VSENSE bias current: 25 nA out of the pin ---------------------------
+alter Vvs dc = 7.5
+op
+let ib = i(Vvs)*1e9
+print ib
+if (abs(ib-25) < 2)
+  echo "PASS 05f VSENSE bias current 25 nA out of the pin (datasheet typ -25 nA)"
+else
+  echo "FAIL 05f"
+end
+
+* ---- soft start as the voltage amp reference: SS = 3 V -------------------
+* with VSENSE = 3.00 V the amp balances; 2.999 V must drive the output high
+alter Vss dc = 3
+alter Vvs dc = 2.999
+op
+print v(vaout)
+if (v(vaout) > 5.7)
+  echo "PASS 05g SS below 7.5 V becomes the voltage-amp reference (SS = 3 V)"
+else
+  echo "FAIL 05g"
+end
+
+* ---- SS current at SS = 2.5 V: 14 uA out of the pin ----------------------
+alter Vss dc = 2.5
+op
+let iss = i(Vss)*1e6
+print iss
+if (abs(iss-14) < 0.5)
+  echo "PASS 05h SS current 14 uA at SS = 2.5 V (datasheet 6 .. 20, typ 14)"
+else
+  echo "FAIL 05h"
+end
+
+* ---- SS pulled to ground while disabled ---------------------------------
+alter Vena = 0
+op
+let issd = i(Vss)*1e3
+print issd
+if (issd < -5)
+  echo "PASS 05i SS is discharged hard (>5 mA) while the IC is disabled"
+else
+  echo "FAIL 05i"
+end
+alter Vena = 7.5
+
+* ---- current amplifier DC gain and bandwidth ----------------------------
+alter Vss dc = 7.5
+alter Vvs dc = 7.5
+alter Vis dc = -10u
+op
+let ca1 = v(caout)
+print ca1
+if (abs(ca1-3.16) < 0.1)
+  echo "PASS 05j current amp open-loop gain 110 dB (3.16 V at 10 uV, datasheet 80 .. 110 dB)"
+else
+  echo "FAIL 05j"
+end
+
+alter Vvs ac = 0
+alter Vis ac = 1
+ac dec 20 1 10Meg
+meas ac fuc WHEN vdb(caout)=0 FALL=1
+print fuc
+if (fuc > 0.6e6) & (fuc < 1.0e6)
+  echo "PASS 05k current amp gain-bandwidth 800 kHz (datasheet 400 .. 800 kHz typ)"
+else
+  echo "FAIL 05k"
+end
+
+alter Vis dc = -1
+op
+print v(caout)
+if (abs(v(caout)-16) < 0.1)
+  echo "PASS 05l current amp high swing 16 V at VCC = 18 V (datasheet 0.5 .. 16 V)"
+else
+  echo "FAIL 05l"
+end
+alter Vis dc = 1
+op
+print v(caout)
+if (abs(v(caout)-0.5) < 0.05)
+  echo "PASS 05m current amp low swing 0.5 V"
+else
+  echo "FAIL 05m"
+end
+
+* ---- ISENSE bias current: 120 nA out of the pin -------------------------
+alter Vis dc = 0
+op
+let ibc = i(Vis)*1e9
+print ibc
+if (abs(ibc-120) < 5)
+  echo "PASS 05n ISENSE bias current 120 nA out of the pin (datasheet typ -120 nA)"
+else
+  echo "FAIL 05n"
+end
+
+* ---- amplifiers stay alive while disabled (pin descriptions) -------------
+alter Vena = 0
+alter Vis dc = -1
+op
+print v(caout)
+if (v(caout) > 15)
+  echo "PASS 05o current amplifier stays active with ENA low"
+else
+  echo "FAIL 05o"
+end
+quit
+.endc
+.end

@@ -1,0 +1,45 @@
+* UC3854 - malha aberta: oscilador, PWM, driver e multiplicador
+*
+* Condicoes de teste do datasheet: VCC = 18 V, RSET = 15k, CT = 1.5 nF,
+* ENA = 7.5 V, VRMS = 1.5 V.  Mostra, sem malha nenhuma:
+*   - rampa de CT (vale 1.1 V, 5.4 V pico-a-vale), F = 1.25/(RSET*CT) = 55 kHz
+*   - GT Drv com duty proporcional a CA Out (aqui uma rampa lenta de 0.5 V a
+*     7 V: duty de 0 % ate o maximo de ~95 %), carga de 1 nF
+*   - o multiplicador: IAC em meia-senoide de 0 a 200 uA (como na ponte
+*     retificadora de um PFC), VA Out = 5 V, VRMS = 1.5 V
+*       Imo = IAC*(VA-1)/VRMS^2 = 200u*4/2.25 = 356 uA ... limitado a
+*       min(2*IAC, 3.75 V/15k = 250 uA)  ->  pico achatado em 250 uA
+*     MULTOUT sai em 1k para o terra: v(mult) em mV = Imo em uA
+*
+* Rode e olhe: v(ct), v(caout), v(gtdrv), v(mult), i(Viac)
+
+.include ../UC3854.lib
+
+Vcc  vcc 0 18
+Vena ena 0 7.5
+C3   vref 0 1u
+Rset rset 0 15k
+Ct   ct 0 1.5n
+
+* CA Out forcado: rampa lenta de 0.5 V a 7 V em 4 ms
+Vca  caout 0 PWL(0 0.5 4m 7)
+
+* multiplicador: IAC em meia-senoide de 120 Hz, VA Out e VRMS fixos
+Viac iac niac 0
+Biac 0 niac I = 200u*abs(sin(2*pi*60*time))
+Rniac niac 0 1Meg
+Vva  vaout 0 5
+Vrms vrms 0 1.5
+Rmo  mult 0 1k
+
+* amplificador de corrente sem uso: entradas a terra por resistor
+Ris  isense 0 10k
+Rvs  vsense 0 10k
+Vpk  pklmt 0 1
+Cgt  gtdrv 0 1n
+
+*   GND PKLMT CAOUT ISENSE MULTOUT IAC VAOUT VRMS VREF ENA VSENSE RSET SS CT VCC GTDRV
+X1  0   pklmt caout isense mult iac vaout vrms vref ena vsense rset ss ct vcc gtdrv UC3854
+
+.tran 10n 8.4m 0 20n
+.end

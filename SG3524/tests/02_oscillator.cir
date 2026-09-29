@@ -1,0 +1,64 @@
+* SG3524 test 02 - oscillator: period = RT*CT, ramp endpoints, dead time, pin 3
+.include sg3524_ng.lib
+Vin  vin 0 20
+Rt   rt 0 10k
+Ct   ct 0 10n
+Rl1  vin ca 2k
+Rl2  vin cb 2k
+Vea  ea 0 0
+Veb  eb 0 0
+Vcmp comp 0 3.5
+Vclp clp 0 0
+Vclm clm 0 0
+X1 inv ni osc clp clm rt ct 0 comp sd ea ca cb eb vin vref SG3524
+.tran 10n 1m 0 10n
+.control
+set noaskquit
+run
+echo "--- test 02: oscillator (RT = 10k, CT = 10 nF -> t = RT*CT = 100 us) ---"
+
+meas tran tosc TRIG v(ct) VAL=3.0 RISE=4 TARG v(ct) VAL=3.0 RISE=8
+let per = tosc/4
+print per
+if (abs(per/100e-6 - 1) < 0.05)
+  echo "PASS 02a oscillator period within 5 % of RT*CT"
+else
+  echo "FAIL 02a"
+end
+
+meas tran ctpk  MAX v(ct) from=0.4m to=0.9m
+meas tran ctval MIN v(ct) from=0.4m to=0.9m
+if (abs(ctpk-4.2) < 0.02) & (abs(ctval-0.6) < 0.08)
+  echo "PASS 02b CT ramp runs 0.6 V -> 4.2 V (3.6 V swing = 3.6 V / RT charging)"
+else
+  echo "FAIL 02b"
+end
+
+meas tran tdead TRIG v(x1.n_blk) VAL=0.5 RISE=5 TARG v(x1.n_blk) VAL=0.5 FALL=5
+print tdead
+if (abs(tdead/0.5e-6 - 1) < 0.1)
+  echo "PASS 02c dead time = 0.5 us at CT = 0.01 uF (datasheet output pulse width)"
+else
+  echo "FAIL 02c"
+end
+
+meas tran voscpk MAX v(osc) from=0.4m to=0.9m
+print voscpk
+if (abs(voscpk-3.5) < 0.15)
+  echo "PASS 02d pin 3 amplitude = 3.5 Vp"
+else
+  echo "FAIL 02d"
+end
+
+meas tran irt AVG i(Vin) from=0.4m to=0.9m
+* charging current must be 3.6 V / RT = 360 uA
+meas tran vrt AVG v(rt) from=0.4m to=0.9m
+print vrt
+if (abs(vrt-3.6) < 0.02)
+  echo "PASS 02e pin 6 sits at 3.6 V, so I(charge) = 3.6 V / RT = 360 uA"
+else
+  echo "FAIL 02e"
+end
+quit
+.endc
+.end

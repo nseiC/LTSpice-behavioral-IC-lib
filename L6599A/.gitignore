@@ -1,0 +1,4 @@
+examples/.run/
+tests/l6599a_ng.lib
+*.raw
+tests/uc3854_ng.lib

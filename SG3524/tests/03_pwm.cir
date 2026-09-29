@@ -1,0 +1,84 @@
+* SG3524 test 03 - PWM comparator, flip-flop steering, output stage
+.include sg3524_ng.lib
+Vin  vin 0 20
+Rt   rt 0 10k
+Ct   ct 0 10n
+Rl1  vin ca 2k
+Rl2  vin cb 2k
+Vea  ea 0 0
+Veb  eb 0 0
+Vcmp comp 0 3.5
+Vclp clp 0 0
+Vclm clm 0 0
+X1 inv ni osc clp clm rt ct 0 comp sd ea ca cb eb vin vref SG3524
+.tran 10n 1.2m 0 10n
+.control
+set noaskquit
+echo "--- test 03: PWM comparator and pulse steering ---"
+
+* ---- duty vs V(COMP): 0 % at 1.0 V rising to 45 % at 3.5 V ----------------
+alter Vcmp = 1.0
+run
+meas tran a0 AVG v(ca) from=0.4m to=1.1156m
+let d0 = (20-a0)/(20-1.006)*100
+print d0
+if (d0 < 0.5)
+  echo "PASS 03a zero duty cycle at V(COMP) = 1.0 V"
+else
+  echo "FAIL 03a"
+end
+
+alter Vcmp = 3.5
+run
+meas tran f1 WHEN v(ca)=10 FALL=2
+meas tran r1 WHEN v(ca)=10 RISE=2
+meas tran f2 WHEN v(ca)=10 FALL=3
+let dmax = (r1-f1)/(f2-f1)*100
+let perA = f2-f1
+print dmax perA
+if (abs(dmax-45) < 1.5)
+  echo "PASS 03b 45 % duty per output at V(COMP) = 3.5 V (datasheet max)"
+else
+  echo "FAIL 03b"
+end
+if (abs(perA/(2*100.6e-6) - 1) < 0.05)
+  echo "PASS 03c each output runs at half the oscillator frequency"
+else
+  echo "FAIL 03c"
+end
+
+meas tran fb1 WHEN v(cb)=10 FALL=2
+let phase = (fb1-f1)/perA*360
+print phase
+if (abs(abs(phase)-180) < 5)
+  echo "PASS 03d outputs A and B are 180 degrees apart (push-pull)"
+else
+  echo "FAIL 03d"
+end
+
+* ---- outputs must never be on together --------------------------------------
+* if the two outputs ever conducted together, v(ca)+v(cb) would drop to ~2 V;
+* with proper blanking the lower one is always ~20 V, so the sum stays > 20 V
+let csum = v(ca)+v(cb)
+meas tran ovl MIN csum from=0.1m to=1.1m
+if (ovl > 20)
+  echo "PASS 03e outputs never overlap (blanking pulse keeps them exclusive)"
+else
+  echo "FAIL 03e"
+end
+
+alter Vcmp = 2.25
+run
+meas tran f3 WHEN v(ca)=10 FALL=2
+meas tran r3 WHEN v(ca)=10 RISE=2
+meas tran f4 WHEN v(ca)=10 FALL=3
+let dmid = (r3-f3)/(f4-f3)*100
+print dmid
+if (abs(dmid-22.5) < 1.5)
+  echo "PASS 03f duty is linear in V(COMP): 22.5 % at the 2.25 V midpoint"
+else
+  echo "FAIL 03f"
+end
+quit
+.endc
+.end

@@ -1,0 +1,53 @@
+* UC3854 test 02 - UVLO and ENA thresholds with hysteresis (slow sweeps)
+.include uc3854_ng.lib
+Vena ena 0 PWL(0 7.5 20m 7.5 25m 4 30m 0 35m 4)
+Rset rset 0 15k
+Vct  ct 0 0
+Vvrms vrms 0 1.5
+Vpk  pk 0 1
+Rgt  gt 0 1e9
+X1 0 pk caout isense mult iac vaout vrms vref ena vsense rset ss ct vccx gt UC3854
+Vccx vccx 0 PWL(0 0 10m 20 20m 0 20.001m 18)
+Rvs vsense 0 1e9
+Ris isense 0 1e9
+Rmo mult 0 1e9
+.tran 1u 35m 0 1u
+.control
+set noaskquit
+echo "--- test 02: UVLO and enable thresholds ---"
+run
+* VCC ramps 0 -> 20 V in 10 ms (2 V/ms) and back; REF shows the RUN state
+meas tran ton WHEN v(vref)=3.75 RISE=1
+meas tran toff WHEN v(vref)=3.75 FALL=1
+let von = ton*2000
+let voff = (20m-toff)*2000
+print von voff
+if (abs(von-16) < 0.15)
+  echo "PASS 02a VCC turn-on threshold 16 V (datasheet 14.5 .. 17.5)"
+else
+  echo "FAIL 02a"
+end
+if (abs(voff-10) < 0.15)
+  echo "PASS 02b VCC turn-off threshold 10 V (datasheet 9 .. 11)"
+else
+  echo "FAIL 02b"
+end
+* ENA: 7.5 -> 4 V (20..25 ms), 4 -> 0 V (25..30 ms, 0.8 V/ms), 0 -> 4 V (30..35 ms)
+meas tran te1 WHEN v(vref)=3.75 FALL=2
+meas tran te2 WHEN v(vref)=3.75 RISE=3
+let venf = 4 - (te1-25m)*800
+let venr = (te2-30m)*800
+print venf venr
+if (abs(venr-2.55) < 0.03)
+  echo "PASS 02c ENA rising threshold 2.55 V (datasheet 2.4 .. 2.7)"
+else
+  echo "FAIL 02c"
+end
+if (abs((venr-venf)-0.25) < 0.03)
+  echo "PASS 02d ENA hysteresis 0.25 V (datasheet 0.2 .. 0.3)"
+else
+  echo "FAIL 02d"
+end
+quit
+.endc
+.end

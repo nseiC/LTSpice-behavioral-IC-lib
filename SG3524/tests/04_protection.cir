@@ -1,0 +1,99 @@
+* SG3524 test 04 - current limit (pins 4,5), shutdown (pin 10), output stage
+.include sg3524_ng.lib
+Vin  vin 0 20
+Rt   rt 0 10k
+Ct   ct 0 10n
+Rl1  vin ca 380
+Rl2  vin cb 380
+Vea  ea 0 0
+Veb  eb 0 0
+* error amplifier driven hard, so it asks for maximum duty cycle
+Vni  ni  0 3.0
+Vinv inv 0 2.5
+Vclp clp 0 0
+Vclm clm 0 0
+Vsd  sd  0 0
+X1 inv ni osc clp clm rt ct 0 comp sd ea ca cb eb vin vref SG3524
+.tran 20n 8m 0 20n
+.control
+set noaskquit
+echo "--- test 04: current limit, shutdown, output stage ---"
+
+run
+meas tran vsat MIN v(ca) from=6m to=7.9m
+meas tran icol MAX i(Vea) from=6m to=7.9m
+print vsat icol
+if (abs(vsat-1.0) < 0.25) & (abs(abs(icol)-0.05) < 0.005)
+  echo "PASS 04a Vce(sat) ~ 1 V at 50 mA (datasheet typ 1 V, max 2 V)"
+else
+  echo "FAIL 04a"
+end
+meas tran vleak MIN v(x1.n_ca) from=6m to=7.9m
+meas tran cmp0  AVG v(comp) from=6m to=7.9m
+if (cmp0 > 3.5)
+  echo "PASS 04b error amplifier holds pin 9 near its 3.8 V ceiling when unlimited"
+else
+  echo "FAIL 04b"
+end
+
+* ---- current limit: datasheet defines threshold as 25 % duty at 200 mV ------
+alter Vclp = 0.2
+run
+meas tran f1 WHEN v(ca)=10 FALL=30
+meas tran r1 WHEN v(ca)=10 RISE=30
+meas tran f2 WHEN v(ca)=10 FALL=31
+let dcl = (r1-f1)/(f2-f1)*100
+meas tran cmpcl AVG v(comp) from=7m to=7.9m
+print dcl cmpcl
+if (abs(dcl-25) < 3)
+  echo "PASS 04c 200 mV sense gives 25 % duty per output (datasheet threshold definition)"
+else
+  echo "FAIL 04c"
+end
+
+alter Vclp = 0.1
+run
+meas tran cmp1 AVG v(comp) from=7m to=7.9m
+print cmp1
+if (cmp1 > 3.5)
+  echo "PASS 04d 100 mV sense does not limit (threshold is 200 mV)"
+else
+  echo "FAIL 04d"
+end
+
+alter Vclp = 0.3
+run
+meas tran a3 AVG v(ca) from=7m to=7.9m
+meas tran cmp3 AVG v(comp) from=7m to=7.9m
+print a3 cmp3
+if (a3 > 19.9) & (cmp3 < 0.5)
+  echo "PASS 04e 300 mV sense shuts the outputs off completely"
+else
+  echo "FAIL 04e"
+end
+
+* ---- shutdown pin ----------------------------------------------------------
+alter Vclp = 0
+alter Vsd  = 2
+run
+meas tran a4 AVG v(ca) from=7m to=7.9m
+meas tran cmp4 AVG v(comp) from=7m to=7.9m
+print a4 cmp4
+if (a4 > 19.9) & (cmp4 < 0.5)
+  echo "PASS 04f pin 10 high shuts the outputs off by pulling pin 9 down"
+else
+  echo "FAIL 04f"
+end
+
+alter Vsd = 0.3
+run
+meas tran cmp5 AVG v(comp) from=7m to=7.9m
+print cmp5
+if (cmp5 > 3.5)
+  echo "PASS 04g pin 10 below its ~0.7 V threshold does nothing"
+else
+  echo "FAIL 04g"
+end
+quit
+.endc
+.end

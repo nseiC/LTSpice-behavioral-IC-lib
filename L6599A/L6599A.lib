@@ -1,0 +1,474 @@
+*------------------------------------------------------------------------------
+* L6599A (L6599AD / L6599AN) - Improved high-voltage resonant controller
+* Behavioral ("functional") macromodel for LTspice.
+*
+* Based on:
+*   STMicroelectronics, "L6599A - Improved high-voltage resonant controller",
+*                       datasheet, Doc ID 15308 Rev 7 (January 2013)
+*   STMicroelectronics, Application note AN3233, "12 V - 150 W resonant
+*                       converter with synchronous rectification using
+*                       L6563H, L6599A, and SRK2000A" (DocID17595 Rev 2)
+*
+* This is NOT a transistor-level model.  Every block of the datasheet block
+* diagram (Figure 1) and of the oscillator diagram (Figure 22) is reproduced
+* by its terminal behaviour, with the numbers taken from the ELECTRICAL
+* CHARACTERISTICS table (Table 5), the PIN DESCRIPTION (Table 2), the typical
+* characteristic curves and the APPLICATION INFORMATION text.  It is meant
+* for closed-loop LLC / resonant half-bridge simulation: it is fast, it
+* converges, and it reproduces the specs that matter when you design a
+* converter around it.
+*
+* The L6599AD (SO16N) and the L6599AN (DIP16) are the same die with the same
+* pinout, so this one model covers both.
+*
+* ---------------------------------------------------------------------------
+* PIN ORDER  (same order as the SO16N / DIP16, pin 1 .. pin 16)
+* ---------------------------------------------------------------------------
+*   1  CSS      Soft-start: internal 120 ohm switch to GND (discharges the
+*               external Css of the Rss-Css soft-start branch)
+*   2  DELAY    OCP delayed shutdown: 150 uA source, 2.05 / 3.5 / 0.33 V
+*   3  CF       Timing capacitor (triangle 0.9 .. 3.9 V)
+*   4  RFMIN    2 V reference; the current it SOURCES sets the frequency
+*   5  STBY     Burst-mode input, 1.24 V falling / 1.29 V rising
+*   6  ISEN     Current sense: 0.8 V (freq. shift) and 1.5 V (latch-off)
+*   7  LINE     Line sensing / brownout, 1.24 V, 13 uA current hysteresis,
+*               clamp and shutdown at ~7 V
+*   8  DIS      Latched disable, 1.85 V
+*   9  PFC_STOP Open-drain output to stop the PFC controller
+*  10  GND      Ground (device reference; does NOT have to be node 0)
+*  11  LVG      Low-side gate drive (referred to GND)
+*  12  VCC      Supply, UVLO 10.7 V on / 8.15 V off, 17 V clamp
+*  13  NC       Not connected (high-voltage spacer)
+*  14  OUT      High-side floating ground (half-bridge node)
+*  15  HVG      High-side gate drive (referred to OUT)
+*  16  VBOOT    High-side floating supply (bootstrap cap to OUT)
+*
+*   X1 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 L6599A
+*
+* ---------------------------------------------------------------------------
+* WHAT IS MODELLED
+* ---------------------------------------------------------------------------
+*  * UVLO 10.7 V on / 8.15 V off, 17 V Vcc clamp (15 mA), start-up current
+*    200 uA, residual 300 uA (latched / LINE / DELAY off), quiescent 1.5 mA
+*    (burst idle), operating 3.5 mA (datasheet test conditions, 1 nF loads),
+*    plus everything the chip sources: RFmin current, the oscillator mirror,
+*    the LVG charge, the bootstrap-diode current, the DELAY generator.
+*  * RFMIN: 2 V reference (source only, limited at ~3 mA).  Its output
+*    current IR is mirrored (KM = 1) into CF: CF charges with KM*IR and
+*    discharges with 2*KM*IR - KM*IR = KM*IR - a symmetrical triangle.
+*    f = 1/(3*CF*RFmin) (Eq. 1): 60 kHz at 12k/470 pF, 250 kHz at 2.7k
+*    (Table 5), ~1 MHz at 1k/220 pF (Figure 9).  The fit uses the real ramp
+*    amplitude (Figure 10: 2.9 V between ~0.85 and ~3.75 V) plus an 80 ns
+*    comparator delay per turnaround, which is what makes the high-frequency
+*    end drop below the ideal formula, exactly as the datasheet numbers do.
+*  * Gate logic (Figure 23): LVG on while CF ramps UP, HVG on while it ramps
+*    DOWN, 0.3 us dead time after each turnaround, so the low side always
+*    starts first (bootstrap charged).  Duty cycle 50 % minus dead time.
+*  * Soft-start (Figure 27): the CSS switch (120 ohm) discharges the external
+*    Css whenever the IC is off (UVLO, LINE out of range, DIS, ISEN latch,
+*    DELAY stop), while ISEN > 0.8 V (until it falls below 0.75 V), and while
+*    V(DELAY) is between 2 V and the restart.  It is NOT discharged in burst
+*    idle ("soft-start is not invoked").
+*  * OCP (Section 7.4): 0.8 V / 50 mV hysteresis comparator -> Css discharge
+*    + 150 uA into DELAY.  1.5 V comparator (300 ns delay) -> latched off
+*    until Vcc falls below UVLO, PFC_STOP low.  250 ns leading-edge
+*    blanking after each gate turns on.
+*  * OLP / DELAY (Figure 29): at 2.05 V the Css switch is held on and the
+*    150 uA source stays on; at 3.5 V the IC stops, the source is switched
+*    off, PFC_STOP goes low; the IC soft-restarts when DELAY falls below
+*    0.33 V.  The state survives a UVLO cycle (Section 7.4, last paragraph).
+*  * LINE: 1.24 V comparator, 13 uA sink while below it (current
+*    hysteresis, Eq. 11/12), internal clamp ~7 V at 1 mA, and shutdown (not
+*    latched) above 7 V.
+*  * DIS: 1.85 V, latched until Vcc falls below UVLO.
+*  * STBY: burst mode, idle below 1.24 V, restart above 1.29 V.  In idle
+*    both gates are low, the oscillator is stopped, Css keeps its charge,
+*    the RFmin reference stays alive, PFC_STOP is low.
+*  * PFC_STOP: open drain, 130 ohm, low on DIS, ISEN latch, LINE > 7 V,
+*    burst idle and while V(DELAY) > 2 V until the restart; open in UVLO
+*    and while LINE < 1.24 V.
+*  * Gate drivers: LVG 13.3 V at -5 mA (Vcc = 15 V), 0.3 A source / 0.8 A
+*    sink, tr ~60 ns / tf ~30 ns into 1 nF, <= 1.5 V at +200 mA, UVLO
+*    pull-down (1.1 V at 2 mA with Vcc = 0).  HVG the same, referred to OUT
+*    and supplied by VBOOT, plus the 25 k HVG-OUT pull-down.
+*  * Synchronous bootstrap diode: 150 ohm + 0.6 V from VCC to VBOOT while
+*    the low-side driver is on (Eq. 13: VDrop = Qg/Tcharge * RDS(on) + VF).
+*
+* ---------------------------------------------------------------------------
+* WHAT IS NOT MODELLED  (behavioural model - know the limits)
+* ---------------------------------------------------------------------------
+*  * Temperature drift, tolerances and the min/max spread: everything is the
+*    typical value at 25 C.  Change the parameters for a corner run.
+*  * No high-side UVLO on VBOOT-OUT, no dv/dt limits on OUT, no substrate
+*    effects if OUT goes below GND (keep it above -3 V as the datasheet says).
+*  * The level shifter is ideal (no propagation delay to HVG beyond the
+*    driver edges).
+*  * The oscillator has no jitter and no supply dependence.
+*------------------------------------------------------------------------------
+
+.SUBCKT L6599A CSS DELAY CF RFMIN STBY ISEN LINE DIS PFCSTOP GND LVG VCC NC OUT HVG VBOOT
++ VCCON=10.7 VCCOFF=8.15 VZ=16.85 RZ=10
++ ISTART=200u IRES=300u IQ=1.33m IOPI=1.02m
++ VREF=2 GREF=2 IRFMX=3m KM=1
++ VCFH=3.78 VCFL=0.88 TDOSC=80n TDEAD=0.3u TLEB=250n
++ VISX=0.8 VISXH=0.05 VISDIS=1.5 TISDIS=300n RSSON=120
++ IDLY=150u VDLY1=2.05 VDLY2=3.5 VDLY3=0.33
++ VLINE=1.24 ILHYS=13u VLCL=7 RLCL=200 VLOV=7
++ VDIS=1.85 VSTBL=1.24 VSTBH=1.29 RPFC=130
++ VDRP=1.575 ROH=25 ROL=7 ISRC=0.3 ISNK=0.8 TDRV=15n TSNK=15n RHVGPD=25k
++ RBOOT=150 VFBOOT=0.6
++ KCT=100 KLOG=10 GLAT=1m TLAT=1n
+
+.param CDOSC={TDOSC/(0.69*1k)}  CDRV={TDRV/1k}
+
+*==============================================================================
+* LATCHES
+* Every state bit of this model is an INTEGRATING set/reset cell, the same
+* construction as the UC3854 model:
+*
+*     C dq/dt = GLAT * ( S*(1-q) - R*q )
+*     S = set   OR ( q > 0.5 AND NOT reset )
+*     R = reset OR ( q < 0.5 AND NOT set )
+*
+* With neither input active the cell is parked at 0 or 1 on its capacitor,
+* the only DC solutions are 0 and 1, and it holds its state whatever the
+* solver's step size.  (The classic regenerative RC latch can flip to the
+* wrong solution when a stiff power stage makes the solver step far longer
+* than the latch RC - see the UC3854 model for the story.)
+* Each cell below is written out as:  Bxs (set)  Bxr (reset)  Bxq (snapped
+* state)  Bx (the integrator)  Cx  Rxg.
+*==============================================================================
+
+*==============================================================================
+* UVLO  (pin 12): on at 10.7 V, off at 8.15 V.  n_uv = 1 when the IC is up.
+*==============================================================================
+Buvs  n_uvs GND V = max(0,min(1,(V(VCC,GND)-{VCCON})*{KLOG}+0.5))
+Buvr  n_uvr GND V = max(0,min(1,({VCCOFF}-V(VCC,GND))*{KLOG}+0.5))
+Buvq  n_uvq GND V = max(0,min(1,(V(n_uvl,GND)-0.5)*{KLOG}))
+Buvl  GND n_uvl I = {GLAT}*(
++     max(V(n_uvs,GND), V(n_uvq,GND)*(1-V(n_uvr,GND)))*(1-V(n_uvl,GND))
++   - max(V(n_uvr,GND), (1-V(n_uvq,GND))*(1-V(n_uvs,GND)))*V(n_uvl,GND) )
+Cuvl  n_uvl GND {GLAT*TLAT}
+Ruvl  n_uvl GND 1G
+* 10 ns soft edge for everything that the supply state gates
+Ruv   n_uvq n_uv 1k
+Cuv   n_uv  GND  10p
+
+* Vcc clamp: 17 V at 15 mA (Table 5, VZ)
+Bvz   VCC GND I = uramp(V(VCC,GND)-{VZ})/{RZ}
+
+*==============================================================================
+* DIS  (pin 8): latched shutdown above 1.85 V, reset only by UVLO
+*==============================================================================
+Rdis  DIS GND 100Meg
+Bdss  n_dss GND V = max(0,min(1,(V(DIS,GND)-{VDIS})*{KCT}+0.5))*V(n_uv,GND)
+Bdsr  n_dsr GND V = 1-V(n_uv,GND)
+Bdsq  n_dsq GND V = max(0,min(1,(V(n_dsl,GND)-0.5)*{KLOG}))
+Bdsl  GND n_dsl I = {GLAT}*(
++     max(V(n_dss,GND), V(n_dsq,GND)*(1-V(n_dsr,GND)))*(1-V(n_dsl,GND))
++   - max(V(n_dsr,GND), (1-V(n_dsq,GND))*(1-V(n_dss,GND)))*V(n_dsl,GND) )
+Cdsl  n_dsl GND {GLAT*TLAT}
+Rdsl  n_dsl GND 1G
+
+*==============================================================================
+* LINE  (pin 7): 1.24 V comparator with 13 uA current hysteresis, ~7 V clamp
+* and overvoltage shutdown (not latched).
+* The comparator is a latch with a +-5 mV window so that it switches cleanly
+* when the 13 uA sink turns off (the real comparator has no voltage
+* hysteresis; the external divider plus 13 uA makes it, Eq. 11).
+*==============================================================================
+Blns  n_lns GND V = max(0,min(1,(V(LINE,GND)-{VLINE}-5m)*{KCT}*10+0.5))
+Blnr  n_lnr GND V = max(0,min(1,({VLINE}-5m-V(LINE,GND))*{KCT}*10+0.5))
+Blnq  n_lnq GND V = max(0,min(1,(V(n_lnl,GND)-0.5)*{KLOG}))
+Blnl  GND n_lnl I = {GLAT}*(
++     max(V(n_lns,GND), V(n_lnq,GND)*(1-V(n_lnr,GND)))*(1-V(n_lnl,GND))
++   - max(V(n_lnr,GND), (1-V(n_lnq,GND))*(1-V(n_lns,GND)))*V(n_lnl,GND) )
+Cln   n_lnl GND {GLAT*TLAT}
+Rlnl  n_lnl GND 1G
+* 13 uA sink while below the threshold (needs a live supply)
+Blnh  LINE GND I = {ILHYS}*(1-V(n_lnq,GND))*min(1,uramp(V(VCC,GND))/3)
++                  *min(1,uramp(V(LINE,GND))*10)
+* internal zener: ~7.2 V at 1 mA
+Blncl LINE GND I = uramp(V(LINE,GND)-{VLCL})/{RLCL}
+Rlin  LINE GND 100Meg
+* overvoltage: shut down above 7 V, restart below
+Blov  n_lov GND V = max(0,min(1,(V(LINE,GND)-{VLOV})*{KCT}+0.5))
+
+*==============================================================================
+* ISEN  (pin 6)
+*   OCP comparator 0.8 V rising / 0.75 V falling -> discharges Css and turns
+*   on the 150 uA DELAY generator.
+*   ISEN_DIS comparator 1.5 V, 300 ns -> latched off until UVLO.
+* Both are blanked for TLEB after each gate turns on (n_leb, see the gate
+* logic below).
+*==============================================================================
+Risn  ISEN GND 100Meg
+Bocs  n_ocs GND V = max(0,min(1,(V(ISEN,GND)-{VISX})*{KCT}+0.5))
++                  *(1-V(n_leb,GND))*V(n_on,GND)
+Bocr  n_ocr GND V = max(max(0,min(1,({VISX}-{VISXH}-V(ISEN,GND))*{KCT}+0.5)),
++                  1-V(n_on,GND))
+Bocq  n_ocq GND V = max(0,min(1,(V(n_ocl,GND)-0.5)*{KLOG}))
+Bocl  GND n_ocl I = {GLAT}*(
++     max(V(n_ocs,GND), V(n_ocq,GND)*(1-V(n_ocr,GND)))*(1-V(n_ocl,GND))
++   - max(V(n_ocr,GND), (1-V(n_ocq,GND))*(1-V(n_ocs,GND)))*V(n_ocl,GND) )
+Cocl  n_ocl GND {GLAT*TLAT}
+Rocl  n_ocl GND 1G
+
+* 1.5 V comparator, filtered to give the 300 ns delay to output
+Bisx  n_isx GND V = max(0,min(1,(V(ISEN,GND)-{VISDIS})*{KCT}))*(1-V(n_leb,GND))
+Risf  n_isx n_isf 1k
+Cisf  n_isf GND {TISDIS/(0.69*1k)}
+Biss  n_iss GND V = max(0,min(1,(V(n_isf,GND)-0.5)*{KLOG}))*V(n_uv,GND)
+Bisr  n_isr GND V = 1-V(n_uv,GND)
+Bisq  n_isq GND V = max(0,min(1,(V(n_isl,GND)-0.5)*{KLOG}))
+Bisl  GND n_isl I = {GLAT}*(
++     max(V(n_iss,GND), V(n_isq,GND)*(1-V(n_isr,GND)))*(1-V(n_isl,GND))
++   - max(V(n_isr,GND), (1-V(n_isq,GND))*(1-V(n_iss,GND)))*V(n_isl,GND) )
+Cisl  n_isl GND {GLAT*TLAT}
+Risl  n_isl GND 1G
+
+*==============================================================================
+* DELAY  (pin 2): OLP timer.
+*   n_olq  (OLP)  set at 2.05 V, reset below 0.33 V: Css held discharged,
+*                 150 uA kept on, PFC_STOP low.
+*   n_stq  (STOP) set at 3.5 V,  reset below 0.33 V: IC stops, generator
+*                 off, the external R discharges the cap.
+* Neither is reset by UVLO: "if during TSTOP Vcc falls below the UVLO
+* threshold, the IC records the event and does not restart ... if V(DELAY)
+* is still higher than 0.3 V".
+*==============================================================================
+Rdly  DELAY GND 1G
+Bols  n_ols GND V = max(0,min(1,(V(DELAY,GND)-{VDLY1})*{KCT}+0.5))
+Bdlr  n_dlr GND V = max(0,min(1,({VDLY3}-V(DELAY,GND))*{KCT}+0.5))
+Bolq  n_olq GND V = max(0,min(1,(V(n_oll,GND)-0.5)*{KLOG}))
+Boll  GND n_oll I = {GLAT}*(
++     max(V(n_ols,GND), V(n_olq,GND)*(1-V(n_dlr,GND)))*(1-V(n_oll,GND))
++   - max(V(n_dlr,GND), (1-V(n_olq,GND))*(1-V(n_ols,GND)))*V(n_oll,GND) )
+Coll  n_oll GND {GLAT*TLAT}
+Roll  n_oll GND 1G
+Bsts  n_sts GND V = max(0,min(1,(V(DELAY,GND)-{VDLY2})*{KCT}+0.5))
+Bstq  n_stq GND V = max(0,min(1,(V(n_stl,GND)-0.5)*{KLOG}))
+Bstl  GND n_stl I = {GLAT}*(
++     max(V(n_sts,GND), V(n_stq,GND)*(1-V(n_dlr,GND)))*(1-V(n_stl,GND))
++   - max(V(n_dlr,GND), (1-V(n_stq,GND))*(1-V(n_sts,GND)))*V(n_stl,GND) )
+Cstl  n_stl GND {GLAT*TLAT}
+Rstl  n_stl GND 1G
+* 150 uA generator: on with OCP or OLP, off once stopped (soft limit at 5 V)
+Bdly  n_dlo GND I = -{IDLY}*V(n_uv,GND)*(1-V(n_dsq,GND))*(1-V(n_isq,GND))
++        *max(V(n_ocq,GND),V(n_olq,GND))*(1-V(n_stq,GND))
++        *max(0,min(1,(5-V(DELAY,GND))*2))
+Vs_dly n_dlo DELAY 0
+
+*==============================================================================
+* STBY  (pin 5): burst mode.  Idle below 1.24 V, running above 1.29 V.
+*==============================================================================
+Rstb  STBY GND 100Meg
+Bsbs  n_sbs GND V = max(0,min(1,({VSTBL}-V(STBY,GND))*{KCT}+0.5))
+Bsbr  n_sbr GND V = max(0,min(1,(V(STBY,GND)-{VSTBH})*{KCT}+0.5))
+Bsbq  n_sbq GND V = max(0,min(1,(V(n_sbl,GND)-0.5)*{KLOG}))
+Bsbl  GND n_sbl I = {GLAT}*(
++     max(V(n_sbs,GND), V(n_sbq,GND)*(1-V(n_sbr,GND)))*(1-V(n_sbl,GND))
++   - max(V(n_sbr,GND), (1-V(n_sbq,GND))*(1-V(n_sbs,GND)))*V(n_sbl,GND) )
+Csbl  n_sbl GND {GLAT*TLAT}
+Rsbl  n_sbl GND 1G
+
+*==============================================================================
+* CONTROL LOGIC
+*   ON  = UVLO ok, not DIS-latched, not ISEN-latched, LINE in range, not
+*         stopped by DELAY.  (Css is discharged while ON is low.)
+*   RUN = ON and not in burst idle: the oscillator and the drivers run.
+* Both get a 10 ns soft edge.
+*==============================================================================
+Bonx  n_onx GND V = V(n_uvq,GND)*(1-V(n_dsq,GND))*(1-V(n_isq,GND))
++                  *V(n_lnq,GND)*(1-V(n_lov,GND))*(1-V(n_stq,GND))
+Ron   n_onx n_on 1k
+Con   n_on  GND  10p
+Brnx  n_rnx GND V = V(n_on,GND)*(1-V(n_sbq,GND))
+Rrn   n_rnx n_run 1k
+Crn   n_run GND  10p
+
+*==============================================================================
+* SUPPLY CURRENT  (pin 12)
+* 200 uA before turn-on, 300 uA residual when latched/stopped/LINE off,
+* 1.5 mA in burst idle (with RFmin = 12k), IQ+IOPI switching; plus
+* everything the IC sources: IR (the RFmin current), another IR for the
+* mirror into CF while the oscillator runs, the LVG driver, the
+* bootstrap diode and the DELAY generator.  IOPI is set so that the total is
+* the datasheet's 3.5 mA at Vcc = 15 V, 12k/470 pF, 1 nF on LVG, VBOOT = 15 V.
+*==============================================================================
+Bicc  VCC GND I = min(1,uramp(V(VCC,GND))/2)*(
++     (1-V(n_uv,GND))*{ISTART}
++   + V(n_uv,GND)*(1-V(n_on,GND))*{IRES}
++   + V(n_on,GND)*({IQ} + {IOPI}*V(n_run,GND)) )
++   + (1+V(n_run,GND))*max(0,I(Vs_ref)) + I(Vs_lsrc) + max(0,I(Vs_boot)) + max(0,I(Vs_dly))
+
+*==============================================================================
+* RFMIN  (pin 4): 2 V reference, sources only (the opto and the resistors
+* pull current out of it), ~3 mA limit.  Alive while ON (also in burst idle,
+* "only the 2 V reference at the RFmin pin stays alive").
+*==============================================================================
+Brf   n_rfo GND I = -max(0, min({IRFMX}, {GREF}*({VREF}*V(n_on,GND)-V(RFMIN,GND))))
+Vs_ref n_rfo RFMIN 0
+Rrf   RFMIN GND 100Meg
+
+*==============================================================================
+* OSCILLATOR  (pin 3, Figure 22)
+* CF is charged with KM*IR while the ramp goes up (n_dq = 0) and discharged
+* with KM*IR while it goes down (n_dq = 1): a symmetrical triangle.  The
+* direction latch is set above VCFH and reset below VCFL; each comparator
+* output passes a TDOSC delay first, so CF overshoots the threshold slightly
+* and the period is
+*
+*     T = 2*CF*(VCFH-VCFL)/IR + 4*TDOSC     (IR = 2 V / RFmin in steady state)
+*
+* With VCFH-VCFL = 2.9 V and TDOSC = 80 ns this gives 60 kHz at 12k/470 pF
+* and 250 kHz at 2.7k/470 pF, as Table 5 states, and 1/(3*CF*RFmin) within
+* a few % in the middle of the range (Eq. 1 is only "approximate").
+*
+* While not running, CF is held just under the valley, so the direction
+* latch is reset: the next start is with the ramp going up, i.e. LVG first.
+*==============================================================================
+Bcf   GND CF I = V(n_run,GND)*{KM}*max(0,I(Vs_ref))*(1-2*V(n_dir,GND))
++          - (1-V(n_run,GND))*1m*(V(CF,GND)-({VCFL}-0.05))
+Rcf   CF GND 1G
+
+Bchx  n_chx GND V = max(0,min(1,(V(CF,GND)-{VCFH})*{KCT}))
+Rchf  n_chx n_chf 1k
+Cchf  n_chf GND {CDOSC}
+Bchs  n_chs GND V = max(0,min(1,(V(n_chf,GND)-0.5)*{KLOG}))
+Bclx  n_clx GND V = max(0,min(1,({VCFL}-V(CF,GND))*{KCT}))
+Rclf  n_clx n_clf 1k
+Cclf  n_clf GND {CDOSC}
+Bcls  n_cls GND V = max(0,min(1,(V(n_clf,GND)-0.5)*{KLOG}))
+Bdq   n_dq  GND V = max(0,min(1,(V(n_dl,GND)-0.5)*{KLOG}))
+Bdl   GND n_dl I = {GLAT}*(
++     max(V(n_chs,GND), V(n_dq,GND)*(1-V(n_cls,GND)))*(1-V(n_dl,GND))
++   - max(V(n_cls,GND), (1-V(n_dq,GND))*(1-V(n_chs,GND)))*V(n_dl,GND) )
+Cdl   n_dl GND {GLAT*TLAT}
+Rdlg  n_dl GND 1G
+* direction with a 1 ns soft edge (drives the CF current)
+Rdir  n_dq n_dir 1k
+Cdir  n_dir GND 1p
+
+*==============================================================================
+* DEAD TIME AND LEADING-EDGE BLANKING
+* n_x follows the direction bit at a fixed slew rate (0 -> 1 in ~TDEAD), so
+* a gate is allowed on only once n_x has completed its travel: that is the
+* 0.3 us dead time after every turnaround, independent of the step size.
+* n_y does the same, slower (TDEAD + TLEB): the ISEN comparators are blanked
+* until it has arrived, i.e. for 250 ns after each gate turns on.
+*==============================================================================
+Bx    GND n_x I = 1n/({TDEAD}*0.97)*max(-1,min(1,(V(n_dir,GND)-V(n_x,GND))*50))
+Cx    n_x GND 1n
+Rxg   n_x GND 1G
+By    GND n_y I = 1n/(({TDEAD}+{TLEB})*0.97)*max(-1,min(1,(V(n_dir,GND)-V(n_y,GND))*50))
+Cy    n_y GND 1n
+Ryg   n_y GND 1G
+Bleb  n_leb GND V = min(1, abs(V(n_dir,GND)-V(n_y,GND))*20)
+
+* gate commands: LVG while the ramp rises, HVG while it falls
+Blc   n_lcx GND V = V(n_run,GND)*(1-V(n_dq,GND))*max(0,min(1,(0.1-V(n_x,GND))*20))
+Bhc   n_hcx GND V = V(n_run,GND)*V(n_dq,GND)*max(0,min(1,(V(n_x,GND)-0.9)*20))
+Rlc   n_lcx n_lc 1k
+Clc   n_lc  GND {CDRV}
+Rhc   n_hcx n_hc 1k
+Chc   n_hc  GND {CDRV}
+Bld   n_ld GND V = max(0,min(1,(V(n_lc,GND)-0.5)*4))
+Bhd   n_hd GND V = max(0,min(1,(V(n_hc,GND)-0.5)*4))
+* sink enables: the pull-down turns on over TSNK.  With the 0.8 A / 7 ohm
+* sink alone the fall into 1 nF would take ~18 ns; the datasheet says 30 ns
+* typical, i.e. the real sink is not fully on at once.  It turns OFF at
+* once, together with the source turning on.
+Blkx  n_lkx GND V = 1-V(n_ld,GND)
+Rlk   n_lkx n_lk 1k
+Clk   n_lk  GND {TSNK/1k}
+Bhkx  n_hkx GND V = 1-V(n_hd,GND)
+Rhk   n_hkx n_hk 1k
+Chk   n_hk  GND {TSNK/1k}
+
+*==============================================================================
+* SOFT-START SWITCH  (pin 1): 120 ohm to GND while the IC is off, during OCP
+* and during OLP.  Not during burst idle.
+*==============================================================================
+Bss   CSS GND I = max(max(1-V(n_on,GND), V(n_ocq,GND)), V(n_olq,GND))
++               * V(CSS,GND)/{RSSON}
+Rcss  CSS GND 1G
+
+*==============================================================================
+* PFC_STOP  (pin 9): open drain, 130 ohm.  Low on DIS, ISEN latch, LINE
+* overvoltage, burst idle and OLP; open during UVLO and with LINE < 1.24 V.
+*==============================================================================
+Bpfc  PFCSTOP GND I = min(1,uramp(V(VCC,GND))/3)*max(
++       V(n_uv,GND)*max(max(V(n_dsq,GND),V(n_isq,GND)),
++                       max(V(n_lov,GND),V(n_sbq,GND)*V(n_on,GND))),
++       V(n_olq,GND)) * V(PFCSTOP,GND)/{RPFC}
+Rpfc  PFCSTOP GND 1G
+
+*==============================================================================
+* LOW-SIDE GATE DRIVER  (pin 11)
+* Source: to Vcc - 1.575 V through 25 ohm, limited at 0.3 A
+*         -> 13.3 V at -5 mA with Vcc = 15 V, tr ~60 ns into 1 nF.
+* Sink:   7 ohm, limited at 0.8 A -> 1.4 V at 200 mA, tf ~30 ns into 1 nF.
+* UVLO pull-down: 1.1 V at 2 mA with Vcc = 0 .. VccOn.
+* Both halves are resistive in BOTH directions (limited at +-Ipk), like the
+* MOSFETs they are.  A one-way uramp() here puts a derivative jump exactly
+* where the pin sits in steady state (0 V low, or on target high); with the
+* high side referred to a half-bridge node swinging 400 V at several amps,
+* Newton then chatters across that corner and the time step collapses.
+*==============================================================================
+Blsrc n_lso GND I = -V(n_ld,GND)*max(-{ISRC},min({ISRC},
++        (V(VCC,GND)-{VDRP}-V(LVG,GND))/{ROH}))
+Vs_lsrc n_lso LVG 0
+Blsnk LVG GND I = min(V(n_lk,GND),1-V(n_ld,GND))*max(-{ISNK},min({ISNK},
++        V(LVG,GND)*min(1,uramp(V(VCC,GND))/5)/{ROL}))
++   + (1-V(n_uv,GND))*uramp(V(LVG,GND)-0.7)/200
+Blsub GND LVG I = uramp(-V(LVG,GND)-0.6)
+Rlvg  LVG GND 1Meg
+Clvg  LVG GND 10p
+
+*==============================================================================
+* HIGH-SIDE GATE DRIVER  (pins 14, 15, 16) - same stage referred to OUT and
+* supplied from VBOOT, with the internal 25 k HVG-OUT pull-down.
+*==============================================================================
+Bhsrc n_hso OUT I = -V(n_hd,GND)*max(-{ISRC},min({ISRC},
++        (V(VBOOT,OUT)-{VDRP}-V(HVG,OUT))/{ROH}))
+Vs_hsrc n_hso HVG 0
+Bhsnk HVG OUT I = min(V(n_hk,GND),1-V(n_hd,GND))*max(-{ISNK},min({ISNK},
++        V(HVG,OUT)*min(1,uramp(V(VBOOT,OUT))/5)/{ROL}))
+Bhsub OUT HVG I = uramp(-V(HVG,OUT)-0.6)
+Rhvg  HVG OUT {RHVGPD}
+Chvg  HVG OUT 10p
+* the high-side driver draws its source current from VBOOT (charge
+* conservation: Vs_hsrc is in series with it; it can be negative)
+Bhbt  VBOOT OUT I = I(Vs_hsrc)
+Rbo   VBOOT OUT 100Meg
+Cbo   VBOOT OUT 10p
+
+*==============================================================================
+* SYNCHRONOUS BOOTSTRAP DIODE  (pins 12 -> 16)
+* A DMOS (150 ohm) in series with a diode (0.6 V), turned on with LVG.  The
+* diode blocks VBOOT -> VCC.  Its knee is rounded (softplus, 20 mV) because
+* VBOOT charges right up to it every cycle.
+*==============================================================================
+Bboot n_bto GND I = -V(n_ld,GND)*V(n_uv,GND)/{RBOOT}*(
++        uramp(V(VCC,GND)-V(VBOOT,GND)-{VFBOOT})
++      + 0.02*ln(1+exp(-abs(V(VCC,GND)-V(VBOOT,GND)-{VFBOOT})/0.02)) )
+Vs_boot n_bto VBOOT 0
+
+* pin capacitances: a few pF on every analog pin, as on the real part.  They
+* also keep each pin voltage a state variable, so the logic that depends on
+* it never forms an algebraic loop when the external circuit leaves the pin
+* with no capacitor (e.g. DELAY with only a resistor).
+Cpcss CSS   GND 10p
+Cpdly DELAY GND 10p
+Cprf  RFMIN GND 10p
+Cpstb STBY  GND 10p
+Cpisn ISEN  GND 10p
+Cplin LINE  GND 10p
+Cpdis DIS   GND 10p
+Cppfc PFCSTOP GND 10p
+
+* NC pin (13): nothing inside
+Rnc   NC GND 1G
+
+.ENDS L6599A

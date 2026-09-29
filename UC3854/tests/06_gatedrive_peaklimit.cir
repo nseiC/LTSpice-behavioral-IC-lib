@@ -1,0 +1,118 @@
+* UC3854 test 06 - gate driver DC levels, peak current limit
+.include uc3854_ng.lib
+* VCC starts at 18 V (UVLO turn-on is 16 V) and then drops to 15 V
+Vcc  vcc 0 PWL(0 18 20u 18 30u 15)
+Vena ena 0 7.5
+Rset rset 0 15k
+Ct   ct 0 1.5n
+Vca  caout 0 7
+Vvrms vrms 0 1.5
+Vpk  pk 0 1
+Cgt  gt 0 1n
+Igt  0 gt 0
+Rgt  gt 0 1e9
+X1 0 pk caout isense mult iac vaout vrms vref ena vsense rset ss ct vcc gt UC3854
+Rvs vsense 0 1e9
+Ris isense 0 1e9
+Rmo mult 0 1e9
+.tran 5n 120u 0 5n
+.control
+set noaskquit
+echo "--- test 06: gate driver and peak current limit ---"
+
+* ---- GT Drv high with 200 mA load at VCC = 15 V --------------------------
+alter Rgt = 64
+run
+meas tran voh MAX v(gt) from=60u to=120u
+let ioh = voh/64*1000
+print voh ioh
+if (abs(voh-12.8) < 0.2)
+  echo "PASS 06a GT Drv high 12.8 V at -200 mA, VCC = 15 V (datasheet min 12, typ 12.8)"
+else
+  echo "FAIL 06a"
+end
+
+* ---- GT Drv low: zero duty (CA Out 0.5 V), current pushed into the pin ---
+alter Rgt = 1e9
+alter @Vcc[pwl] = [ 0 18 1 18 ]
+alter Vca dc = 0.5
+alter Igt dc = 200m
+run
+meas tran vol2 AVG v(gt) from=60u to=120u
+print vol2
+if (abs(vol2-1.0) < 0.1)
+  echo "PASS 06b GT Drv low 1.0 V at 200 mA (datasheet typ 1.0, max 2.2)"
+else
+  echo "FAIL 06b"
+end
+alter Igt dc = 10m
+run
+meas tran vol1 AVG v(gt) from=60u to=120u
+print vol1
+if (vol1 < 0.4)
+  echo "PASS 06c GT Drv low < 0.4 V at 10 mA (datasheet typ 0.1, max 0.4)"
+else
+  echo "FAIL 06c"
+end
+
+* ---- GT Drv low with VCC = 0 (unpowered pull-down) -----------------------
+alter @Vcc[pwl] = [ 0 0 1 0 ]
+alter Igt dc = 50m
+run
+meas tran vol0 AVG v(gt) from=60u to=120u
+print vol0
+if (abs(vol0-0.9) < 0.1)
+  echo "PASS 06d GT Drv low 0.9 V at 50 mA with VCC = 0 V (datasheet typ 0.9, max 1.5)"
+else
+  echo "FAIL 06d"
+end
+
+* ---- PKLMT input current at -0.1 V ---------------------------------------
+alter @Vcc[pwl] = [ 0 18 1 18 ]
+alter Igt dc = 0
+alter Vca dc = 7
+alter Vpk dc = -0.1
+run
+meas tran ipk AVG i(Vpk) from=60u to=120u
+let ipku = ipk*1e6
+print ipku
+if (abs(ipku-100) < 10)
+  echo "PASS 06e PKLMT input current 100 uA out of the pin at -0.1 V (datasheet -200 .. , typ -100 uA)"
+else
+  echo "FAIL 06e"
+end
+meas tran gpk MAX v(gt) from=60u to=120u
+print gpk
+if (gpk < 0.5)
+  echo "PASS 06f PKLMT below 0 V holds the output off"
+else
+  echo "FAIL 06f"
+end
+
+* ---- PKLMT delay and cycle-by-cycle action --------------------------------
+* PKLMT falls 50 mV -> -50 mV in 10 ns at 80 us (gate is high then), and
+* goes back to +50 mV 300 ns later.  The output must turn off ~175 ns after
+* the step and stay off for the rest of that oscillator cycle.
+alter @Vpk[pwl] = [ 0 0.05 80u 0.05 80.01u -0.05 80.3u -0.05 80.31u 0.05 ]
+run
+meas tran gpre FIND v(gt) AT=79.9u
+meas tran tdl WHEN v(gt)=7 FALL=1 from=80u
+let dly = (tdl - 80.005u)*1e9
+print gpre dly
+if (gpre > 13) & (dly > 120) & (dly < 230)
+  echo "PASS 06g PKLMT to GT Drv delay ~175 ns (datasheet typ 175 ns)"
+else
+  echo "FAIL 06g"
+end
+* the next rise must be the next oscillator cycle, not the end of the pulse
+meas tran tnx WHEN v(gt)=7 RISE=1 from=80u
+meas tran tct WHEN v(ct)=3 FALL=1 from=80u
+print tnx tct
+if (tnx > tct) & (tnx < tct+2u)
+  echo "PASS 06h PKLMT acts cycle by cycle: output stays off until the next clock"
+else
+  echo "FAIL 06h"
+end
+quit
+.endc
+.end

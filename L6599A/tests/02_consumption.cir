@@ -1,0 +1,76 @@
+* L6599A test 02 - quiescent (burst idle) and residual consumption, Vcc clamp,
+* RFmin at 2 mA load
+.include l6599a_ng.lib
+Vcc  vcc 0 15
+Vbt  vboot 0 15
+Rf   rfmin 0 12k
+Cf   cf 0 470p
+Vst  stby 0 1
+Vln  line 0 2
+Vdis dis 0 0
+Cl   lvg 0 1n
+Ch   hvg 0 1n
+Rdl  delay 0 1Meg
+X1 css delay cf rfmin stby 0 line dis nc1 0 lvg vcc nc 0 hvg vboot L6599A
+
+* second part, fed by a 15 mA current source, latched off by DIS so that
+* nearly all of the 15 mA flows in the clamp: Vcc clamp
+Iz   0 vz 15m
+Cz   vz 0 100n
+Vd2  dis2 0 3
+Rf2  rf2 0 12k
+Cf2  cf2 0 470p
+Vln2 ln2 0 2
+X2 cs2 dl2 cf2 rf2 rf2 0 ln2 dis2 nc2 0 lv2 vz nc3 0 hv2 vb2 L6599A
+Rdl2 dl2 0 1Meg
+Rvb2 vb2 0 1Meg
+
+* third part: RFmin loaded with 1k (2 mA)
+Vc3  vc3 0 15
+Rf3  rf3 0 1k
+Cf3  cf3 0 1n
+Vln3 ln3 0 2
+X3 cs3 dl3 cf3 rf3 rf3 0 ln3 0 nc4 0 lv3 vc3 nc5 0 hv3 vb3 L6599A
+Rdl3 dl3 0 1Meg
+Rvb3 vb3 0 1Meg
+
+.tran 20n 400u 0 20n
+.control
+set noaskquit
+echo "--- test 02: consumption, clamp ---"
+run
+meas tran iq AVG i(Vcc) from=200u to=400u
+let iqm = -iq*1e3
+meas tran lmx MAX v(lvg) from=100u to=400u
+meas tran vz AVG v(vz) from=300u to=400u
+meas tran vr3 AVG v(rf3) from=200u to=400u
+print iqm lmx vz vr3
+if (abs(iqm-1.5) < 0.1) & (lmx < 0.5)
+  echo "PASS 02a quiescent current 1.5 mA in burst idle, VSTBY = 1 V, outputs low (datasheet 1.5 typ, 2 max)"
+else
+  echo "FAIL 02a"
+end
+if (abs(vz-17) < 0.2)
+  echo "PASS 02b Vcc clamp 17 V at 15 mA (datasheet 16 .. 17.9)"
+else
+  echo "FAIL 02b"
+end
+if (abs(vr3-2) < 0.02)
+  echo "PASS 02c RFmin 2.0 V while sourcing 2 mA (datasheet 1.93 .. 2.07 at -2 mA)"
+else
+  echo "FAIL 02c"
+end
+alter Vst dc=2
+alter Vdis dc=3
+run
+meas tran ir AVG i(Vcc) from=200u to=400u
+let iru = -ir*1e6
+print iru
+if (abs(iru-300) < 30)
+  echo "PASS 02d residual consumption 300 uA with DIS latched (datasheet 300 typ, 400 max)"
+else
+  echo "FAIL 02d"
+end
+quit
+.endc
+.end

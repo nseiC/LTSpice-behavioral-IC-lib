@@ -1,0 +1,61 @@
+* L6599A test 09 - STBY / burst mode: idle below 1.24 V, restart above
+* 1.29 V, Css keeps its charge, PFC_STOP low while idle, low side first.
+.include l6599a_ng.lib
+Vcc  vcc 0 15
+Vbt  vboot 0 15
+Rf   rfmin 0 12k
+Rss  rfmin css 6.2k
+Css  css 0 10n
+Cf   cf 0 470p
+Vst  stby 0 PWL(0 2 0.2m 2 0.5m 1.1 0.8m 1.1 1.2m 1.5 1.6m 1.5)
+Vln  line 0 2
+Cl   lvg 0 1n
+Ch   hvg 0 1n
+Rdl  delay 0 1Meg
+Rpf  pfc vcc 10k
+X1 css delay cf rfmin stby 0 line 0 pfc 0 lvg vcc nc 0 hvg vboot L6599A
+.tran 20n 1.6m 0 20n
+.control
+set noaskquit
+echo "--- test 09: STBY / burst mode ---"
+run
+meas tran tid WHEN v(pfc)=7.5 FALL=1
+meas tran trn WHEN v(pfc)=7.5 RISE=1
+let vl = 2-(tid-0.2m)/0.3m*0.9
+let vh = 1.1+(trn-0.8m)/0.4m*0.4
+let tid2 = tid+2u
+let trn2 = trn-2u
+meas tran lmx MAX v(lvg) from=$&tid2 to=$&trn2
+meas tran hmx MAX v(hvg) from=$&tid2 to=$&trn2
+meas tran csm MIN v(css) from=$&tid2 to=$&trn2
+meas tran tl WHEN v(lvg)=7 RISE=1 from=$&trn2
+meas tran th WHEN v(hvg)=7 RISE=1 from=$&trn2
+print vl vh lmx hmx csm tl th
+if (abs(vl-1.24) < 0.01)
+  echo "PASS 09a burst idle below 1.24 V (datasheet 1.2 .. 1.28)"
+else
+  echo "FAIL 09a"
+end
+if (abs(vh-vl-0.05) < 0.01)
+  echo "PASS 09b restart 50 mV higher, 1.29 V (datasheet hysteresis 50 mV)"
+else
+  echo "FAIL 09b"
+end
+if (lmx < 0.5) & (hmx < 0.5)
+  echo "PASS 09c both gate drives low and PFC_STOP low while idle"
+else
+  echo "FAIL 09c"
+end
+if (csm > 1.9)
+  echo "PASS 09d Css keeps its charge in burst idle (no soft-start on restart)"
+else
+  echo "FAIL 09d"
+end
+if (tl < th)
+  echo "PASS 09e on restart the low side switches first (bootstrap charged, Fig. 23)"
+else
+  echo "FAIL 09e"
+end
+quit
+.endc
+.end

@@ -1,0 +1,161 @@
+* UC3854 test 04 - multiplier / divider, datasheet table and Note 5
+* IAC is driven by a current source, MULTOUT is held at 0 V by a source and
+* the multiplier current is read from it.  VA Out is forced.  CT is held so
+* the oscillator is frozen and .op is well defined.
+.include uc3854_ng.lib
+Vcc  vcc 0 18
+Vena ena 0 7.5
+Rset rset 0 15k
+Vct  ct 0 0
+Iiac 0 iac 100u
+Vva  vaout 0 5
+Vvrms vrms 0 1.5
+Vmo  mult 0 0
+Vpk  pk 0 1
+Rgt  gt 0 1e9
+X1 0 pk caout isense mult iac vaout vrms vref ena vsense rset ss ct vcc gt UC3854
+Rvs vsense 0 1e9
+Ris isense 0 1e9
+.control
+set noaskquit
+echo "--- test 04: multiplier ---"
+
+op
+let vpin = v(iac)
+print vpin
+if (abs(vpin-6) < 0.1)
+  echo "PASS 04a IAC pin sits at 6.0 V (datasheet nominal 6 V)"
+else
+  echo "FAIL 04a"
+end
+
+* datasheet: IAC=100u, RSET=10k, VRMS=1.25 V -> -200 uA (IAC limited, 2*IAC)
+alter Rset = 10k
+alter Vvrms = 1.25
+op
+let i1 = i(Vmo)*1e6
+print i1
+if (abs(i1-200) < 5)
+  echo "PASS 04b IAC-limited Imo = 2*IAC = 200 uA (datasheet 180 .. 220)"
+else
+  echo "FAIL 04b"
+end
+
+* IAC=450u, RSET=15k, VRMS=1 V, VA=6 V -> -255 uA (RSET limited, 3.75/RSET)
+alter Rset = 15k
+alter Iiac = 450u
+alter Vvrms = 1
+alter Vva = 6
+op
+let i2 = i(Vmo)*1e6
+print i2
+if (i2 > 220) & (i2 < 280)
+  echo "PASS 04c RSET-limited Imo = 3.75 V/15k = 250 uA (datasheet 220 .. 280, typ 255)"
+else
+  echo "FAIL 04c"
+end
+
+* IAC = 0 -> 0
+alter Iiac = 0
+op
+let i3 = i(Vmo)*1e6
+print i3
+if (abs(i3) < 2)
+  echo "PASS 04d Imo = 0 with IAC = 0 (datasheet -2 .. 2 uA)"
+else
+  echo "FAIL 04d"
+end
+
+* the four Note-5 table points that are inside the limits
+alter Vvrms = 2
+alter Iiac = 50u
+alter Vva = 4
+op
+let i4 = i(Vmo)*1e6
+print i4
+if (i4 > 33) & (i4 < 50)
+  echo "PASS 04e IAC=50u VRMS=2 VA=4: Imo 37.5 uA (datasheet 33 .. 50)"
+else
+  echo "FAIL 04e"
+end
+alter Iiac = 100u
+alter Vva = 2
+op
+let i5 = i(Vmo)*1e6
+print i5
+if (i5 > 12) & (i5 < 38)
+  echo "PASS 04f IAC=100u VRMS=2 VA=2: Imo 25 uA (datasheet 12 .. 38)"
+else
+  echo "FAIL 04f"
+end
+alter Iiac = 200u
+alter Vva = 4
+op
+let i6 = i(Vmo)*1e6
+print i6
+if (i6 > 105) & (i6 < 165)
+  echo "PASS 04g IAC=200u VRMS=2 VA=4: Imo 150 uA (datasheet 105 .. 165, typ 150)"
+else
+  echo "FAIL 04g"
+end
+alter Iiac = 300u
+alter Vvrms = 1
+alter Vva = 2
+op
+let i7 = i(Vmo)*1e6
+print i7
+if (i7 > 150) & (i7 < 250.5)
+  echo "PASS 04h IAC=300u VRMS=1 VA=2: Imo 250 uA, RSET-limited (datasheet 150 .. 250)"
+else
+  echo "FAIL 04h"
+end
+
+* VA Out below 1 V inhibits the multiplier
+alter Vvrms = 2
+alter Iiac = 200u
+alter Vva = 0.9
+op
+let i8 = i(Vmo)*1e6
+print i8
+if (abs(i8) < 0.5)
+  echo "PASS 04i VA Out below 1 V inhibits the multiplier output"
+else
+  echo "FAIL 04i"
+end
+
+* VRMS is clamped at 4.5 V: 5 V must give the same Imo as 4.5 V
+alter Rset = 3k
+alter Iiac = 400u
+alter Vva = 5
+alter Vvrms = 4.5
+op
+let i9 = i(Vmo)*1e6
+print i9
+if (abs(i9-79.0) < 1)
+  echo "PASS 04j Imo = IAC*(VA-1)/VRMS^2 = 79 uA at VRMS = 4.5 V (Note 5, KM = 1)"
+else
+  echo "FAIL 04j"
+end
+alter Vvrms = 5
+op
+let i10 = i(Vmo)*1e6
+print i10
+if (abs(i10-79.0) < 1)
+  echo "PASS 04k VRMS clamped at 4.5 V: 5 V gives the same 79 uA (U-134)"
+else
+  echo "FAIL 04k"
+end
+
+* disabled -> the RSET limit collapses and the multiplier is off
+alter Vena = 0
+op
+let i11 = i(Vmo)*1e6
+print i11
+if (abs(i11) < 0.5)
+  echo "PASS 04l multiplier output is zero while the IC is disabled"
+else
+  echo "FAIL 04l"
+end
+quit
+.endc
+.end

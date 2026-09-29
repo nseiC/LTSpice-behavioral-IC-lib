@@ -1,0 +1,57 @@
+* L6599A test 05 - OCP comparator: 0.8 V threshold, 50 mV hysteresis,
+* soft-start discharge.
+* ISEN ramps 0 -> 1 V in 2 ms and back.  The soft-start branch (Rss 6.2k,
+* Css 10 nF from RFmin) charges Css to 2 V; the OCP switch empties it while
+* ISEN > 0.8 V and until ISEN < 0.75 V.  DELAY sits on 1k so that the 150 uA
+* generator cannot reach the 2 V OLP threshold here.
+.include l6599a_ng.lib
+Vcc  vcc 0 15
+Vbt  vboot 0 15
+Rf   rfmin 0 12k
+Rss  rfmin css 6.2k
+Css  css 0 10n
+Cf   cf 0 470p
+Vst  stby 0 2
+Vln  line 0 2
+Vis  isen 0 PWL(0 0 2m 1 4m 0)
+Cl   lvg 0 1n
+Ch   hvg 0 1n
+Rdl  delay 0 1k
+X1 css delay cf rfmin stby isen line 0 nc1 0 lvg vcc nc 0 hvg vboot L6599A
+.tran 20n 4m 0 20n
+.control
+set noaskquit
+echo "--- test 05: OCP ---"
+run
+meas tran t1 WHEN v(css)=1 FALL=1
+meas tran t2 WHEN v(css)=0.1 RISE=1 from=2m
+let vth = t1/2m
+let vtl = 1-(t2-2m)/2m
+meas tran css1 AVG v(css) from=0.5m to=1.5m
+meas tran css2 MAX v(css) from=1.7m to=2.4m
+meas tran vdl MAX v(delay) from=1.7m to=2.4m
+let idl = vdl/1k*1e6
+print vth vtl css1 css2 idl
+if (abs(vth-0.8) < 0.01)
+  echo "PASS 05a OCP threshold 0.8 V, Css discharged above it (datasheet 0.77 .. 0.83)"
+else
+  echo "FAIL 05a"
+end
+if (abs(vth-vtl-0.05) < 0.01)
+  echo "PASS 05b OCP hysteresis 50 mV, Css released below 0.75 V (datasheet 50 mV)"
+else
+  echo "FAIL 05b"
+end
+if (css1 > 1.9) & (css2 < 0.1)
+  echo "PASS 05c Css charged to 2 V normally, held near 0 V during OCP (120 ohm switch)"
+else
+  echo "FAIL 05c"
+end
+if (abs(idl-150) < 5)
+  echo "PASS 05d DELAY generator 150 uA during OCP (datasheet 100 .. 200)"
+else
+  echo "FAIL 05d"
+end
+quit
+.endc
+.end

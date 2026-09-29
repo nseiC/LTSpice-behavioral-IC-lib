@@ -1,0 +1,40 @@
+* SG3524 - BUCK-BOOST inversor 12 V -> -12 V, 50 kHz, malha fechada
+*
+* Detalhe que pega muita gente: com saida NEGATIVA o somador de
+* realimentacao tem que entrar pelo pino 2 (NI), nao pelo pino 1 (INV).
+* Pelo INV a realimentacao vira POSITIVA e o conversor dispara.
+*
+* Rode e olhe: v(vout), v(ni), v(comp)
+.include ../SG3524.lib
+Vin vin 0 12
+Rt rt 0 10k
+Ct ct 0 2n
+* saida negativa: divisor de VREF para VOUT, no de soma em INV
+* saida negativa: o somador entra pelo NI, nao pelo INV, senao a
+* realimentacao vira positiva.  vout mais negativo -> NI cai -> COMP cai ->
+* duty cai.  Ra=10k de VREF, Rb=56k de VOUT, equilibrio com NI = INV = 2.5 V.
+Ra vref ni 10k
+Rb vout ni 57.6k
+Rr1 vref inv 10k
+Rr2 inv 0 10k
+Rcz comp ncz 4.7k
+Ccz ncz 0 220n
+Cp  comp 0 220p
+Rdrv ndrv 0 1k
+X1 inv ni osc clp clm rt ct 0 comp sd ndrv vin vin ndrv vin vref SG3524
+* estagio buck-boost (inversor): chave high-side, indutor para o terra
+S1 vin nsw ndrv 0 PSW
+L1 nsw 0 100u
+D1 vout nsw DFW
+Rsn nsw nsn 10
+Csn nsn 0 22n
+Cnsw nsw 0 470p
+Cout vout ncc 470u IC=0
+Resr ncc 0 40m
+Rload vout 0 24
+Vclp clp 0 0
+Vclm clm 0 0
+.model PSW SW(Ron=0.1 Roff=1Meg Vt=5 Vh=1)
+.model DFW D(IS=5e-8 N=1.05 CJO=100p TT=20n)
+.tran 500n 15m 0 500n uic
+.end

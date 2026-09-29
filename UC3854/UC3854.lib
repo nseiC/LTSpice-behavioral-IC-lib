@@ -1,0 +1,387 @@
+*------------------------------------------------------------------------------
+* UC3854 - High power factor preregulator (average-current-mode PFC controller)
+* Behavioral ("functional") macromodel for LTspice.
+*
+* Based on:
+*   Unitrode / Texas Instruments, "UC1854/UC2854/UC3854 High Power Factor
+*                                  Preregulator", datasheet 6/98
+*   Unitrode / Texas Instruments, Application Note U-134 (SLUA144),
+*                                 "UC3854 Controlled Power Factor Correction
+*                                  Circuit Design", Philip C. Todd
+*
+* This is NOT a transistor-level model.  Every block of the datasheet block
+* diagram is reproduced by its terminal behaviour, with the numbers taken from
+* the ELECTRICAL CHARACTERISTICS table, the PIN DESCRIPTIONS, the typical
+* characteristic curves and the U-134 design text.  It is meant for closed-loop
+* PFC simulation: it is fast, it converges, and it reproduces the specs that
+* matter when you design a preregulator around it.
+*
+* ---------------------------------------------------------------------------
+* PIN ORDER  (same order as the 16-pin DIP / SOIC, pin 1 .. pin 16)
+* ---------------------------------------------------------------------------
+*   1  GND      Ground  (device reference; does NOT have to be node 0)
+*   2  PKLMT    Peak current limit, trips when pulled below 0.0 V
+*   3  CAOUT    Current amplifier output (NPN follower + 8 k to ground)
+*   4  ISENSE   Current amplifier inverting input
+*   5  MULTOUT  Multiplier output (a current) = current amp non-inverting input
+*   6  IAC      Multiplier line-waveform input - a CURRENT, pin held at 6.0 V
+*   7  VAOUT    Voltage amplifier output (NPN follower + 8 k, clamped 5.8 V)
+*   8  VRMS     Feed-forward (RMS line) input, squared, then divided into
+*   9  VREF     7.5 V reference output (0 V while disabled)
+*  10  ENA      Enable, 2.55 V rising / 2.30 V falling
+*  11  VSENSE   Voltage amplifier inverting input
+*  12  RSET     Held at 3.75 V: sets oscillator current and the Imo limit
+*  13  SS       Soft start, 14 uA pull-up, reference of the voltage amp
+*  14  CT       Oscillator timing capacitor
+*  15  VCC      Supply, UVLO 16 V on / 10 V off
+*  16  GTDRV    Totem-pole gate drive, clamped to 14.5 V
+*
+*   X1 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 UC3854
+*
+* ---------------------------------------------------------------------------
+* WHAT IS MODELLED
+* ---------------------------------------------------------------------------
+*  * UVLO on VCC with hysteresis, 16 V on / 10 V off, and the ENA comparator,
+*    2.55 V rising with 0.25 V hysteresis, clamped at ~14 V.  Both must be
+*    true (RUN) for the reference, the oscillator, soft start and the gate
+*    drive to operate.  The two amplifiers stay active while disabled, exactly
+*    as the pin descriptions say.
+*  * Supply current 1.5 mA while off/disabled, 10 mA running, plus whatever
+*    the gate driver, the reference, the amplifiers and the multiplier source.
+*  * 7.5 V reference: 0.5 ohm output impedance (5 mV load regulation at
+*    10 mA, datasheet typ), 28 mA short-circuit current, held at 0 V while
+*    disabled.  Line regulation is ideal above the 1.5 V dropout.
+*  * Oscillator: RSET pin held at 3.75 V, CT charged by 1.9 x I(RSET) and
+*    discharged by a fixed 12 mA sink between the 1.1 V valley and 6.5 V peak
+*    (5.4 V peak-to-valley).  That reproduces BOTH F = 1.25/(RSET*CT)
+*    within a few % (measured 55.4 kHz vs 55 kHz typ at 15k/1.5 nF, 98 kHz
+*    vs 102 kHz typ at 8.2k, +4 % at 47k) AND
+*    the "Gate Drive Maximum Duty Cycle vs RSET" curve, whose shape is exactly
+*    what a fixed discharge current gives: 80 % at 3k, 94 % at 10k, 95 % at
+*    15k, 97 % at 20k, 99 % at 50k.
+*  * PWM comparator (CT ramp vs CA Out) + RS latch set by the oscillator
+*    pulse, reset by the PWM comparator or by PKLMT, output blanked during the
+*    discharge pulse.  Duty rises with CA Out: 0 % below the 1.1 V valley,
+*    maximum (~95 %) above the 6.5 V peak.  Once reset, the latch keeps the
+*    output off for the rest of the cycle - ripple on CA Out cannot produce a
+*    second pulse, and PKLMT acts cycle by cycle.
+*  * Multiplier/divider:  Imo = KM * IAC * (VA Out - 1) / VRMS^2, KM = 1 /V
+*    (Note 5), VRMS clamped internally at 4.5 V (U-134), no output below
+*    VA Out = 1 V, and limited to  min( 2*IAC , 3.75 V/RSET )  - the two
+*    limits quoted in the datasheet and in U-134.  Imo flows OUT of pin 5.
+*  * Voltage amplifier: op amp, 100 dB, 1 MHz GBW, non-inverting input =
+*    min(7.5 V, V(SS)) - the "ideal diodes" of the block diagram.  Output is an
+*    NPN follower (20 mA short-circuit) with an 8 k pull-down; it can only
+*    SINK through that 8 k, as in the real part.  Clamped 0.5 .. 5.8 V.
+*  * Current amplifier: op amp, 110 dB, 800 kHz GBW, same NPN-follower/8 k
+*    output, swing 0.5 V .. min(16 V, VCC-2 V).  Inputs 4 and 5 have the
+*    protection diodes to ground (conducting below about -0.5 V).
+*  * Soft start: 14 uA pull-up to ~8.5 V when running, fast discharge while
+*    disabled.  V(SS) takes over as the voltage-amp reference while < 7.5 V.
+*  * PKLMT: 0.0 V threshold, 100 uA flowing out of the pin at -0.1 V,
+*    ~175 ns PKLMT-to-GT Drv delay.
+*  * Gate driver: 14.5 V clamp, 12.8 V high at 200 mA with VCC = 15 V, 1.0 V
+*    low at 200 mA, 0.9 V at 50 mA with VCC = 0 (the unpowered pull-down),
+*    ~0.8 A peak, rise/fall ~35 ns into 1 nF.
+*
+* ---------------------------------------------------------------------------
+* WHAT IS NOT MODELLED  (behavioural model - know the limits)
+* ---------------------------------------------------------------------------
+*  * Temperature drift, tolerances and the min/max spread: everything is the
+*    typical value at 25 C.  Change the .param values for a corner run.
+*  * The multiplier is ideal inside its limits.  The real one compresses at
+*    high IAC (see "Multiplier Output vs Voltage on Mult", about -10 % at
+*    400 uA) and its table points scatter +-10 % around Note 5; the model
+*    follows Note 5 exactly.  Its bandwidth is infinite.
+*  * Amplifier slew rates are not in the datasheet; the model uses 5 V/us.
+*    Offsets default to 0 (datasheet +-8 mV / +-4 mV max) - set VOSVA/VOSCA.
+*  * Common-mode limits (-0.3 .. 2.5 V on pins 4/5) are not enforced beyond
+*    the protection diodes.
+*  * The oscillator frequency drifts a little with the internal delays at
+*    very small CT (see README).
+*------------------------------------------------------------------------------
+
+.SUBCKT UC3854 COM PKLMT CAOUT ISENSE MULTOUT IAC VAOUT VRMS VREF ENA VSENSE RSET SS CT VCC GTDRV
++ VCCON=16 VCCOFF=10 VENAH=2.55 VENAL=2.30 VENACL=14
++ ICCOFF=1.5m ICCON=10m
++ VREFNOM=7.5 VREFDO=1.5 GREF=2 IREFSC=28m IREFSNK=5m
++ VRSET=3.75 KOSC=1.9 IDIS=12m GDIS=13.3m VCTF=0.5 VCTL=1.1 VCTH=6.5
++ VIAC=6 RIAC=100 KM=1 VAOFS=1 VRMSMX=4.5 VRMSMN=0.2 KIAC=2 VMOHR=3
++ AVA=100k GBWVA=1Meg SRVA=5Meg VOSVA=0 IBVA=25n VAL=0.5 VAH=5.8
++ ACA=316k GBWCA=800k SRCA=5Meg VOSCA=0 IBCA=120n CAL=0.5 CAH=16 VCAHR=2
++ ISCA=20m ROUTA=8k GFOL=20m
++ ISS=14u VSSMX=8.5
++ VPKTH=0 IPKB=100u TPK=175n
++ VGCL=14.5 VGDROP=1.6 ROH=3 ROL=5 IGPK=0.8 VGOFF=0.7 RGOFF=4 TDRV=70n
++ KCT=100 KLOG=10 GCLMP=1 GLAT=1m TDLAT=1n TQLAT=5n
+
+* derived constants: single-pole op-amp models on a 100 Meg internal node
+.param GMVA={AVA/100Meg}  CPVA={GMVA/(6.2832*GBWVA)}  IMVA={SRVA*CPVA}
+.param GMCA={ACA/100Meg}  CPCA={GMCA/(6.2832*GBWCA)}  IMCA={SRCA*CPCA}
+
+*==============================================================================
+* UVLO (VCC 16 V / 10 V) AND ENABLE (ENA 2.55 V / 2.30 V)
+* Each is a one-bit hysteretic latch: the self-referencing B source + 1 ns RC
+* is the usual LTspice idiom (same construction as the SG3524 model).  The
+* comparison windows are 0.1 V wide (KLOG = 10) - sharp enough to be a
+* threshold, soft enough to be solvable.
+*==============================================================================
+Buvq  n_uvq COM V = max(0,min(1,(V(n_uv,COM)-0.5)*{KLOG}))
+Buv   n_uvx COM V = V(n_uvq,COM)     * max(0,min(1,(V(VCC,COM)-{VCCOFF})*{KLOG}))
++               + (1-V(n_uvq,COM)) * max(0,min(1,(V(VCC,COM)-{VCCON})*{KLOG}))
+Ruv   n_uvx n_uv 1
+Cuv   n_uv  COM  1n
+Ruvg  n_uv  COM  1G
+
+Benq  n_enq COM V = max(0,min(1,(V(n_en,COM)-0.5)*{KLOG}))
+Ben   n_enx COM V = V(n_enq,COM)     * max(0,min(1,(V(ENA,COM)-{VENAL})*{KLOG}*10))
++               + (1-V(n_enq,COM)) * max(0,min(1,(V(ENA,COM)-{VENAH})*{KLOG}*10))
+Ren   n_enx n_en 1
+Cen   n_en  COM  1n
+Reng  n_en  COM  1G
+* ENA input: ~0.2 uA, internally clamped to about 14 V (Note 3)
+Rena  ENA COM 100Meg
+Bencl ENA COM I = uramp(V(ENA,COM)-{VENACL})*0.01
+
+* RUN = UVLO ok AND enabled, with a 10 ns soft edge
+Brun  n_runx COM V = V(n_uvq,COM)*V(n_enq,COM)
+Rrun  n_runx n_run 1k
+Crun  n_run  COM   10p
+
+*==============================================================================
+* SUPPLY CURRENT  (pin 15)
+* 1.5 mA off / 10 mA on, plus everything the chip SOURCES from VCC: the
+* reference, the gate driver high side, both amplifier followers, the
+* multiplier output and the soft-start current.  Faded out below 2 V so that
+* an unpowered part has a clean DC solution.
+*==============================================================================
+Bicc  VCC COM I = min(1,uramp(V(VCC,COM))/2)
++        * ({ICCOFF} + ({ICCON}-{ICCOFF})*V(n_run,COM))
++   + max(0, I(Vs_ref)) + I(Vs_gsrc) + I(Vs_vasrc) + I(Vs_casrc)
++   + max(0, I(Vs_mo)) + max(0, I(Vs_ss))
+
+*==============================================================================
+* 7.5 V REFERENCE  (pin 9)
+* GREF = 2 S -> 0.5 ohm: 5 mV drop at 10 mA (datasheet typ load reg.).
+* Source limit 28 mA (typ short-circuit current).  While RUN is low the
+* target is 0 V and a 5 mA sink holds the pin at ground, "REF is disabled and
+* will remain at 0V when VCC is low or when ENA is low".
+*==============================================================================
+Breft n_reft COM V = min({VREFNOM}, uramp(V(VCC,COM)-{VREFDO}))*V(n_run,COM)
+Bref  n_refo COM I = -max(-{IREFSNK}, min({IREFSC}, {GREF}*(V(n_reft,COM)-V(VREF,COM))))
+Vs_ref n_refo VREF 0
+Rref  VREF COM 10Meg
+Cref  VREF COM 1n
+
+*==============================================================================
+* SOFT START  (pin 13)
+* 14 uA pull-up (softly stopping at VSSMX) while running; while disabled or
+* in UVLO it is discharged quickly - "SS will quickly discharge to ground".
+*==============================================================================
+Bss   n_sso COM I = -( V(n_run,COM)*{ISS}*max(0,min(1,({VSSMX}-V(SS,COM))*5))
++                   - (1-V(n_run,COM))*min(10m, 10m*uramp(V(SS,COM))) )
+Vs_ss n_sso SS 0
+Rss   SS COM 1G
+Cssi  SS COM 10p
+
+*==============================================================================
+* OSCILLATOR  (pins 12, 14)
+*
+* Pin 12 is held at 3.75 V, so ISET = 3.75/RSET.  Vs_rs measures it; it
+* feeds both the CT charging current and the multiplier limit.
+*
+* CT is charged with KOSC*ISET all the time and, during the discharge pulse,
+* sunk by IDIS.  With KOSC = 1.9 and IDIS = 12 mA the period is
+*
+*   T = CT*5.4/(1.9*3.75/RSET) + CT*5.4/(12m - 1.9*3.75/RSET)
+*
+* which is 1.25/(RSET*CT) to within a few % over 8.2k..47k, and gives the
+* datasheet max-duty curve (a FIXED discharge current is what makes the
+* dead-time fraction grow as RSET shrinks).  Keep RSET above ~1.5 k - below
+* that the charging current approaches IDIS and the oscillator stalls.
+*
+* The discharge is min(IDIS, GDIS*(V-VCTF)): a constant current down to
+* ~1.4 V and then a resistive tail onto a 0.5 V floor.  The tail slows CT down
+* where the latch resets at 1.1 V, so the valley does not depend on the
+* solver's step size (the lesson learned on the SG3524 model).
+*==============================================================================
+Brs   n_rs COM V = {VRSET}*V(n_run,COM)
+Vs_rs n_rs RSET 0
+Bct   COM CT I = {KOSC}*max(0,I(Vs_rs))
++   - V(n_blk,COM)*min({IDIS}, {GDIS}*uramp(V(CT,COM)-{VCTF}))
++   - (1-V(n_run,COM))*{GDIS}*uramp(V(CT,COM))
+Rct   CT COM 1G
+
+* --- discharge latch: set at VCTH (6.5 V), reset at VCTL (1.1 V) -------------
+* See "LATCHES" below for why this is an integrating S/R cell and not the
+* usual regenerative RC latch.
+Bdh   n_dh  COM V = max(0,min(1,(V(CT,COM)-{VCTH})*{KCT}))
+Bdl   n_dl  COM V = max(0,min(1,({VCTL}-V(CT,COM))*{KCT}))
+Bdq   n_dq  COM V = max(0,min(1,(V(n_dis,COM)-0.5)*{KLOG}))
+Bdis  COM n_dis I = {GLAT}*(
++     max(V(n_dh,COM), V(n_dq,COM)*(1-V(n_dl,COM)))*(1-V(n_dis,COM))
++   - max(V(n_dl,COM), (1-V(n_dq,COM))*(1-V(n_dh,COM)))*V(n_dis,COM) )
+Cdis  n_dis COM {GLAT*TDLAT}
+Rdisg n_dis COM 1G
+Bdsc  n_dsc COM V = V(n_dq,COM)*V(n_run,COM)
+
+* --- blanking = the oscillator pulse, with a 10 ns edge -----------------------
+Rblk  n_dsc n_blk 1
+Cblk  n_blk COM   10n
+
+*==============================================================================
+* VOLTAGE AMPLIFIER  (pins 11, 13 -> 7)
+* Transconductance stage into a 100 Meg / CPVA internal node = single pole op
+* amp: A0 = 100 dB, pole at 10 Hz, GBW = 1 MHz (datasheet curve).  The
+* non-inverting input is min(7.5 V, V(SS)).  The output is a source-only NPN
+* follower (20 mA limit) plus the internal 8 k to ground, so it can only sink
+* what the 8 k draws - a large feedback capacitor discharges through it.
+* VSENSE bias current: 25 nA flowing out of the pin.
+*==============================================================================
+Rvs   VSENSE COM 10G
+Bvsb  COM VSENSE I = {IBVA}
+Bvag  COM n_va I = max(-{IMVA}, min({IMVA},
++     {GMVA}*( min({VREFNOM}, V(SS,COM)) - V(VSENSE,COM) - {VOSVA} )))
+Rva   n_va COM 100Meg
+Cva   n_va COM {CPVA}
+Bvacl n_va COM I = {GCLMP}*uramp(V(n_va,COM) - max(0,min({VAH}, V(VCC,COM)-1.2)))
++                - {GCLMP}*uramp({VAL} - V(n_va,COM))
+Bvao  n_vao COM I = -max(0, min({ISCA}, {GFOL}*(V(n_va,COM)-V(VAOUT,COM))))
+Vs_vasrc n_vao VAOUT 0
+Rvao  VAOUT COM {ROUTA}
+Cvao  VAOUT COM 10p
+
+*==============================================================================
+* CURRENT AMPLIFIER  (pins 5, 4 -> 3)
+* Same structure: 110 dB, 800 kHz GBW (datasheet typ), NPN follower + 8 k,
+* output 0.5 V .. min(16 V, VCC - 2 V).  ISENSE bias 120 nA out of the pin.
+* Pins 4 and 5 carry protection diodes to ground ("avoid taking these inputs
+* below -0.5 V").
+*==============================================================================
+Ris   ISENSE COM 1G
+Bisb  COM ISENSE I = {IBCA}
+Bcl4  COM ISENSE  I = uramp(-V(ISENSE,COM)-0.5)*0.1
+Bcl5  COM MULTOUT I = uramp(-V(MULTOUT,COM)-0.5)*0.1
+Bcag  COM n_ca I = max(-{IMCA}, min({IMCA},
++     {GMCA}*( V(MULTOUT,COM) - V(ISENSE,COM) - {VOSCA} )))
+Rca   n_ca COM 100Meg
+Cca   n_ca COM {CPCA}
+Bcacl n_ca COM I = {GCLMP}*uramp(V(n_ca,COM) - max(0,min({CAH}, V(VCC,COM)-{VCAHR})))
++                - {GCLMP}*uramp({CAL} - V(n_ca,COM))
+Bcao  n_cao COM I = -max(0, min({ISCA}, {GFOL}*(V(n_ca,COM)-V(CAOUT,COM))))
+Vs_casrc n_cao CAOUT 0
+Rcao  CAOUT COM {ROUTA}
+Ccao  CAOUT COM 10p
+
+*==============================================================================
+* MULTIPLIER / DIVIDER  (pins 6, 7, 8, 12 -> 5)
+*
+*   Imo = KM * IAC * (VA Out - 1) / VRMS^2          (datasheet Note 5)
+*
+* limited to 2*IAC and to 3.75 V/RSET (= ISET), whichever is lower.  VRMS is
+* clamped at 4.5 V internally (U-134: "the feedforward function is lost"
+* above that).  Below VA Out = 1 V there is no output.
+*
+* Pin 6 is a current input held at 6.0 V: the current INTO the pin is IAC.
+* Hence the U-134 trick of a resistor Rvac/4 from REF to pin 6 to cancel the
+* 6 V offset.  The pin only sinks, so it cannot push current backwards.
+*==============================================================================
+Riac  IAC COM 100Meg
+Vs_iac IAC n_iac 0
+Biac  n_iac COM I = uramp(V(n_iac,COM)-{VIAC})/{RIAC}
+Rvrms VRMS COM 100Meg
+Bmo   n_moo COM I = -min(1, uramp(V(VCC,COM)-{VMOHR}-V(MULTOUT,COM))*2)
++  * min( min({KIAC}*I(Vs_iac), max(0,I(Vs_rs))),
++         {KM}*I(Vs_iac)*uramp(V(VAOUT,COM)-{VAOFS})
++           / (max({VRMSMN},min({VRMSMX},V(VRMS,COM)))
++            * max({VRMSMN},min({VRMSMX},V(VRMS,COM)))) )
+Vs_mo n_moo MULTOUT 0
+Rmo   MULTOUT COM 1G
+
+*==============================================================================
+* PEAK CURRENT LIMIT  (pin 2)
+* Trips below VPKTH = 0.0 V.  About 100 uA flows out of the pin at -0.1 V
+* (datasheet "PKLMT input current").  The comparator output is filtered with
+* TPK so that the PKLMT-to-GT Drv delay is ~175 ns as specified; that filter
+* is also the noise immunity the real comparator has.
+*==============================================================================
+Rpk   PKLMT COM 1G
+Bpkb  COM PKLMT I = {IPKB}*max(0,min(1,(0.3-V(PKLMT,COM))/0.4))
+Bpkc  n_pkx COM V = max(0,min(1,({VPKTH}-V(PKLMT,COM))*{KCT}))
+Rpkf  n_pkx n_pkf 1k
+Cpkf  n_pkf COM {TPK/1000}
+Bpk   n_pk COM V = max(0,min(1,(V(n_pkf,COM)-0.5)*{KLOG}))
+
+*==============================================================================
+* LATCHES
+* Both latches in this model (the oscillator discharge latch above and the
+* PWM latch below) are INTEGRATING set/reset cells:
+*
+*     C dq/dt = GLAT * ( S*(1-q) - R*q )
+*     S = external set   OR ( q > 0.5 AND NOT external reset )
+*     R = external reset OR ( q < 0.5 AND NOT external set )
+*
+* While neither input is active the cell is simply parked on its capacitor
+* at 0 or 1, and the only DC solutions are q = 0 and q = 1.  The "q > 0.5"
+* terms make it snap to a rail once it is past halfway, so it cannot be left
+* half set.
+*
+* Why not the classic regenerative RC latch (B source feeding its own RC,
+* as in the SG3524 model)?  Because in a stiff power stage the solver steps
+* far longer than that RC.  The trapezoidal integrator then turns the RC into
+* an algebraic loop with TWO solutions, and whenever an input moves inside
+* one step Newton can land on the wrong one.  In the U-134 250 W converter,
+* at a 100 ns step, that is exactly what happened: the PWM latch dropped its
+* state as the blanking pulse ended and the gate drive stopped for good.
+* The integrating cell has no such second solution, so it holds its state
+* whatever the step size.
+*==============================================================================
+
+*==============================================================================
+* PWM COMPARATOR + RS LATCH
+*   set   : the oscillator pulse (n_blk)
+*   reset : ramp above CA Out (outside the pulse), or PKLMT
+* Reset dominates.  Once reset, the output stays off for the rest of the
+* cycle: switching ripple on CA Out cannot produce a second pulse, and PKLMT
+* acts cycle by cycle.
+*==============================================================================
+Bcmp  n_cmp COM V = max(0,min(1,(V(CT,COM)-V(CAOUT,COM))*{KCT}))
+Brst  n_rst COM V = max(V(n_cmp,COM)*(1-V(n_blk,COM)), V(n_pk,COM))
+Bqq   n_qq  COM V = max(0,min(1,(V(n_q,COM)-0.5)*{KLOG}))
+Bq    COM n_q I = {GLAT}*(
++     (1-V(n_rst,COM))*max(V(n_blk,COM), V(n_qq,COM))*(1-V(n_q,COM))
++   - max(V(n_rst,COM), (1-V(n_qq,COM))*(1-V(n_blk,COM)))*V(n_q,COM) )
+Cq    n_q COM {GLAT*TQLAT}
+Rqg   n_q COM 1G
+
+* --- gate command and driver slew -------------------------------------------
+* The comparator and PKLMT also gate the output directly, so the reset path
+* never lets a sliver through while the latch is still moving.
+Bg    n_gx COM V = V(n_qq,COM)
++        * (1-V(n_blk,COM)) * (1-V(n_cmp,COM)) * (1-V(n_pk,COM)) * V(n_run,COM)
+Rg    n_gx n_g 1k
+Cg    n_g  COM {TDRV/1000}
+
+*==============================================================================
+* GATE DRIVER  (pin 16)
+* Totem pole.  High side: target min(14.5 V clamp, VCC - 1.6 V), 3 ohm, current
+* limited at IGPK -> 12.8 V at 200 mA with VCC = 15 V, 14.5 V unloaded.
+* Low side: 5 ohm (1.0 V at 200 mA, 0.05 V at 10 mA), same current limit.
+* With VCC too low to run, a passive pull-down still holds the gate:
+* 0.9 V at 50 mA with VCC = 0 V (datasheet "GT Drv Output Voltage Low, Off").
+* The drive threshold max(0,min(1,(v-0.5)*4)) after the TDRV slew gives the
+* ~35 ns edges into 1 nF.
+*==============================================================================
+Bgd   n_gd COM V = max(0,min(1,(V(n_g,COM)-0.5)*4))
+Bgsrc n_gso COM I = -V(n_gd,COM) * min({IGPK},
++        uramp(max(0,min({VGCL}, V(VCC,COM)-{VGDROP})) - V(GTDRV,COM))/{ROH})
+Vs_gsrc n_gso GTDRV 0
+Bgsnk GTDRV COM I = (1-V(n_gd,COM)) * min({IGPK}, max(
++        uramp(V(GTDRV,COM))*min(1,uramp(V(VCC,COM))/5)/{ROL},
++        uramp(V(GTDRV,COM)-{VGOFF})/{RGOFF} ))
+* substrate diode: the pin cannot be pulled much below ground
+Bgsub COM GTDRV I = uramp(-V(GTDRV,COM)-0.6)
+Rgl   GTDRV COM 1Meg
+Cgl   GTDRV COM 20p
+
+.ENDS UC3854

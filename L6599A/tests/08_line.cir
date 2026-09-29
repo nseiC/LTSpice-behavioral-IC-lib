@@ -1,0 +1,74 @@
+* L6599A test 08 - LINE pin: 1.24 V threshold, 13 uA current hysteresis,
+* overvoltage shutdown at ~7 V.
+* X1: LINE is driven from a slow ramp through 100k (no filter cap, so the
+*     pin follows the ramp), so the 13 uA sink moves
+*     the turn-on point up by 1.3 V: on at Vs = 2.54 V, off at Vs = 1.24 V.
+* X2: LINE driven through 1k from 5 V -> 9 V -> 5 V: above ~7 V the IC stops
+*     (not latched) and restarts when it falls back.
+.include l6599a_ng.lib
+Vcc  vcc 0 15
+Vbt  vboot 0 15
+Vst  stby 0 2
+Vs   vs 0 PWL(0 0 3m 3 6m 0)
+Rln  vs line 100k
+
+Rf   rfmin 0 12k
+Cf   cf 0 470p
+Rdl  delay 0 1Meg
+Rpf  pfc vcc 10k
+X1 css delay cf rfmin stby 0 line 0 pfc 0 lvg vcc nc 0 hvg vboot L6599A
+
+Vs2  vs2 0 PWL(0 5 1m 5 3m 9 5m 5 6m 5)
+Rln2 vs2 ln2 1k
+Rf2  rf2 0 12k
+Cf2  cf2 0 470p
+Rdl2 dl2 0 1Meg
+Rpf2 pf2 vcc 10k
+X2 cs2 dl2 cf2 rf2 stby 0 ln2 0 pf2 0 lv2 vcc nc2 0 hv2 vboot L6599A
+
+.tran 20n 6m 0 20n
+.control
+set noaskquit
+echo "--- test 08: LINE ---"
+run
+meas tran ton WHEN v(rfmin)=1 RISE=1
+meas tran tof WHEN v(rfmin)=1 FALL=1
+let vson = ton*1000
+let vsof = (6m-tof)*1000
+let ihys = (vson-1.24)/100k*1e6
+meas tran pfl MIN v(pfc) from=0.1m to=2.4m
+print vson vsof ihys pfl
+if (abs(vsof-1.24) < 0.02)
+  echo "PASS 08a LINE threshold 1.24 V (datasheet 1.2 .. 1.28)"
+else
+  echo "FAIL 08a"
+end
+if (abs(ihys-13) < 0.5)
+  echo "PASS 08b 13 uA current hysteresis: on at 1.24 V + 13 uA * RH (datasheet 10 .. 16)"
+else
+  echo "FAIL 08b"
+end
+if (pfl > 14)
+  echo "PASS 08c PFC_STOP open while LINE < 1.24 V"
+else
+  echo "FAIL 08c"
+end
+meas tran to2 WHEN v(rf2)=1 FALL=1
+meas tran tn2 WHEN v(rf2)=1 RISE=1 from=2m
+let vsof2 = 5+(to2-1m)/2m*4
+meas tran vcl MAX v(ln2)
+meas tran pf2 MIN v(pf2) from=3m to=3.5m
+print vsof2 tn2 vcl pf2
+if (vsof2 > 6.9) & (vsof2 < 7.2) & (tn2 > 3m) & (tn2 < 5m)
+  echo "PASS 08d LINE above ~7 V shuts the IC down, restarts below (not latched)"
+else
+  echo "FAIL 08d"
+end
+if (vcl > 7) & (vcl < 8) & (pf2 < 0.5)
+  echo "PASS 08e LINE clamp between 7 and 8 V at ~1 mA, PFC_STOP low (datasheet 6 .. 8 V at 1 mA)"
+else
+  echo "FAIL 08e"
+end
+quit
+.endc
+.end
