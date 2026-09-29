@@ -13,7 +13,7 @@
 ## Português
 
 Biblioteca de **modelos SPICE comportamentais** de controladores de fontes
-chaveadas, para **LTspice** (e ngspice).
+chaveadas e de CIs lógicos, para **LTspice** (e ngspice).
 
 Este repositório é destinado a apoiar o **kit educacional de LTspice**
 desenvolvido pela **Universidade Tecnológica Federal do Paraná (UTFPR) –
@@ -39,6 +39,7 @@ especificações que importam no projeto.
 | [**SG3524**](SG3524/) | controlador PWM | datasheets Philips, ST e TI cruzados | malha aberta, buck, boost, buck-boost inversor, push-pull, circuito de teste do datasheet |
 | [**UC3854**](UC3854/) | PFC boost por corrente média | 57 verificações (datasheet 6/98) | malha aberta; PFC de 250 W da U-134 em 120 V e 230 V (FP 0,995 / 0,980) |
 | [**L6599A**](L6599A/) (L6599AD / L6599AN) | controlador ressonante LLC meia-ponte | 49 verificações (datasheet Rev 7) | LLC 12 V / 150 W da AN3233 (ZVS, burst, hiccup); fonte completa UC3854 + L6599A, 115 VCA → 12 V, FP 0,985 |
+| [**74HC86**](74HC86/) | 4 portas XOR de 2 entradas, CMOS HC | 30 verificações (ON Semi 74HC86/D Rev. 1), no limite garantido a 25 °C | tabela verdade, inversor controlado, detector de fase, dobrador de frequência, paridade, oscilador em anel, PLL |
 
 Cada pasta tem o próprio README com a pinagem, como cada bloco foi modelado,
 a tabela de verificação, os resultados dos exemplos e o que **não** foi
@@ -61,11 +62,45 @@ os scripts geram sozinhos:
 cd SG3524/tests && ./run_tests.sh
 cd UC3854/tests && ./run_tests.sh
 cd L6599A/tests && ./run_tests.sh
+cd 74HC86/tests && ./run_tests.sh
 cd L6599A/examples && ./run_examples.sh 01_malha_aberta.cir
+cd 74HC86/examples && ./run_examples.sh
 ```
 
 Os exemplos de conversores completos levam de alguns minutos (SG3524) a ~1 h
 cada (LLC e PFC + LLC).
+
+### Robustez ao FRA do LTspice
+
+O `.fra` do LTspice mede o ganho de malha no domínio do tempo: um único
+transiente em que, depois de o circuito assentar, uma senoide pequena é
+injetada em série na malha, um tom por vez, e a resposta é extraída por
+Fourier. Para isso dar certo, o modelo precisa ter um ponto de operação bem
+definido, responder de forma **linear** a uma perturbação pequena e **não
+depender do passo de tempo**.
+
+O LTspice não roda no ambiente de verificação deste repositório, então
+`tools/fra/fra_ngspice.py` emula o `.fra` no ngspice (mesmo método:
+injeção de Middlebrook, um tom por vez, número inteiro de ciclos, DFT) e roda
+cada malha três vezes: nominal, com o **dobro da amplitude** e com **metade
+do passo**. O modelo é considerado robusto se as três rodadas concordam
+(≤ 1 dB / 5° onde |T| < 20 dB).
+
+```
+python3 tools/fra/fra_ngspice.py tools/fra/configs/74hc86_pll.py
+```
+
+| Malha | Situação |
+|---|---|
+| 74HC86 — PLL com detector de fase XOR | **passa**: desvio ≤ 0,23 dB / 0,7°, e bate com o ganho de malha teórico (≤ 0,22 dB); cruzamento 1,9 kHz, MF 54° |
+| SG3524 — buck (e boost, inversor, push-pull) | **em investigação**: a primeira rodada mostrou picos de até 8 V na saída do exemplo. A causa é a chave ideal do estágio de potência com integração trapezoidal, não o modelo, e os exemplos passaram a usar `.options method=gear`. Mesmo assim o buck ainda não passa no critério |
+| UC3854 — malha de corrente do PFC | pendente |
+| L6599A — LLC 12 V / 150 W | pendente |
+
+Dica que vale para qualquer esquemático com chave ideal (`S`) no LTspice ou
+no ngspice: se o FRA sair ruidoso, veja primeiro se o nó de comutação não
+está "tocando" numericamente na abertura da chave. `method=gear`, ou uma
+chave com transição suave, resolve.
 
 ### Licença
 
@@ -77,7 +112,7 @@ envolva segurança.
 ## English
 
 A library of **behavioural SPICE models** of switch-mode power supply
-controllers, for **LTspice** (and ngspice).
+controllers and logic ICs, for **LTspice** (and ngspice).
 
 This repository is intended to support the **LTspice educational kit**
 developed at the **Federal University of Technology – Paraná (UTFPR),
@@ -103,6 +138,7 @@ that matter when you design around the part.
 | [**SG3524**](SG3524/) | PWM controller | Philips, ST and TI datasheets cross-checked | open loop, buck, boost, inverting buck-boost, push-pull, datasheet test circuit |
 | [**UC3854**](UC3854/) | average-current-mode boost PFC | 57 checks (datasheet 6/98) | open loop; U-134 250 W PFC at 120 V and 230 V (PF 0.995 / 0.980) |
 | [**L6599A**](L6599A/) (L6599AD / L6599AN) | resonant LLC half-bridge controller | 49 checks (datasheet Rev 7) | AN3233 12 V / 150 W LLC (ZVS, burst, hiccup); complete UC3854 + L6599A supply, 115 VAC → 12 V, PF 0.985 |
+| [**74HC86**](74HC86/) | quad 2-input XOR gate, HC CMOS | 30 checks (ON Semi 74HC86/D Rev. 1), at the 25 °C guaranteed limit | truth table, controlled inverter, phase detector, frequency doubler, parity, ring oscillator, PLL |
 
 Each folder has its own README with the pinout, how each block is modelled,
 the verification table, the example results and what is **not** modelled.
@@ -125,11 +161,36 @@ line, which the scripts generate automatically:
 cd SG3524/tests && ./run_tests.sh
 cd UC3854/tests && ./run_tests.sh
 cd L6599A/tests && ./run_tests.sh
+cd 74HC86/tests && ./run_tests.sh
 cd L6599A/examples && ./run_examples.sh 01_malha_aberta.cir
+cd 74HC86/examples && ./run_examples.sh
 ```
 
 The complete-converter examples take from a few minutes (SG3524) to about an
 hour each (LLC and PFC + LLC).
+
+### Robustness to LTspice .FRA
+
+LTspice's `.fra` measures loop gain in the time domain: one transient in
+which, once the circuit has settled, a small sine is injected in series with
+the loop, one tone at a time, and the response is extracted by Fourier
+transform. That only works if the model has a well-defined operating point,
+responds **linearly** to a small perturbation and does **not depend on the
+time step**.
+
+LTspice does not run in this repository's verification environment, so
+`tools/fra/fra_ngspice.py` emulates `.fra` in ngspice (same method:
+Middlebrook injection, one tone at a time, whole cycles, DFT) and runs every
+loop three times — nominal, **twice the injection amplitude**, **half the
+time step**. A model passes when the three agree (≤ 1 dB / 5° where
+|T| < 20 dB).
+
+| Loop | Status |
+|---|---|
+| 74HC86 — XOR phase-detector PLL | **passes**: ≤ 0.23 dB / 0.7°, and matches the textbook loop gain within 0.22 dB; crossover 1.9 kHz, PM 54° |
+| SG3524 — buck (and boost, inverting, push-pull) | **under investigation**: the first run showed output spikes up to 8 V in the example. The cause was the ideal switch with trapezoidal integration, not the model, and the examples now use `.options method=gear`. The buck still does not meet the criterion |
+| UC3854 — PFC current loop | pending |
+| L6599A — 12 V / 150 W LLC | pending |
 
 ### Licence
 
