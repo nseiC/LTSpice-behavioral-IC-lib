@@ -1,0 +1,21 @@
+* 74HC86 - XOR como inversor controlado (buffer / inversor programavel)
+*
+* Y = A xor B:  com B = 0 a porta e um buffer (Y = A); com B = 1 ela e um
+* inversor (Y = /A).  E o uso classico do '86 para inverter polaridade de um
+* sinal por um bit de controle.  Aqui B (CTRL) sobe em 5 us.
+*
+* Rode e olhe: v(clk), v(ctrl), v(y)
+
+.include ../74HC86.lib
+
+Vcc  vcc 0 5
+Vclk clk 0 PULSE(0 5 100n 6n 6n 494n 1u)
+Vct  ctrl 0 PULSE(0 5 5.25u 6n 6n 1 2)
+
+* porta 1 usada; as entradas das outras tres vao ao terra (nunca deixe
+* entrada CMOS flutuando)
+X1 clk ctrl y 0 0 y2 0 y3 0 0 y4 0 0 vcc 74HC86
+CL y 0 50p
+
+.tran 1n 10u 0 1n
+.end

@@ -1,0 +1,82 @@
+* 74HC86 test 03 - output drive VOH / VOL (DC table, 25 C column)
+* The pull-down sits at the guaranteed limit, so VOL must meet 0.26 V and land
+* within 60 mV of it.  The pull-up is a little stronger than its limit (see
+* the model header), so VOH only has to meet it.
+.include 74hc86_ng.lib
+Vcc vcc 0 4.5
+X1 vcc 0 yh 0 0 yl 0 y3 0 0 y4 0 0 vcc 74HC86
+Ih yh 0 20u
+Il vcc yl 20u
+.control
+set noaskquit
+echo "--- test 03: output drive ---"
+
+alter Vcc = 2
+alter Ih = 20u
+alter Il = 20u
+op
+print v(yh) v(yl)
+if (v(yh) > 2-0.1) & (v(yl) < 0.1)
+  echo "PASS 03 VCC=2 V, 20 uA: VOH > 1.9 V, VOL < 0.1 V"
+else
+  echo "FAIL 03 VCC=2 V 20 uA"
+end
+
+alter Vcc = 4.5
+alter Ih = 20u
+alter Il = 20u
+op
+print v(yh) v(yl)
+if (v(yh) > 4.5-0.1) & (v(yl) < 0.1)
+  echo "PASS 03 VCC=4.5 V, 20 uA: VOH > 4.4 V, VOL < 0.1 V"
+else
+  echo "FAIL 03 VCC=4.5 V 20 uA"
+end
+
+alter Vcc = 6
+alter Ih = 20u
+alter Il = 20u
+op
+print v(yh) v(yl)
+if (v(yh) > 6-0.1) & (v(yl) < 0.1)
+  echo "PASS 03 VCC=6 V, 20 uA: VOH > 5.9 V, VOL < 0.1 V"
+else
+  echo "FAIL 03 VCC=6 V 20 uA"
+end
+
+alter Vcc = 3
+alter Ih = 2.4m
+alter Il = 2.4m
+op
+print v(yh) v(yl)
+if (v(yh) >= 2.48) & (v(yl) <= 0.261) & (v(yl) > 0.2)
+  echo "PASS 03 VCC=3 V, 2.4mA: VOH >= 2.48 V, VOL = 0.26 V (at the limit)"
+else
+  echo "FAIL 03 VCC=3 V 2.4mA"
+end
+
+alter Vcc = 4.5
+alter Ih = 4m
+alter Il = 4m
+op
+print v(yh) v(yl)
+if (v(yh) >= 3.98) & (v(yl) <= 0.261) & (v(yl) > 0.2)
+  echo "PASS 03 VCC=4.5 V, 4mA: VOH >= 3.98 V, VOL = 0.26 V (at the limit)"
+else
+  echo "FAIL 03 VCC=4.5 V 4mA"
+end
+
+alter Vcc = 6
+alter Ih = 5.2m
+alter Il = 5.2m
+op
+print v(yh) v(yl)
+if (v(yh) >= 5.48) & (v(yl) <= 0.261) & (v(yl) > 0.2)
+  echo "PASS 03 VCC=6 V, 5.2mA: VOH >= 5.48 V, VOL = 0.26 V (at the limit)"
+else
+  echo "FAIL 03 VCC=6 V 5.2mA"
+end
+
+quit
+.endc
+.end

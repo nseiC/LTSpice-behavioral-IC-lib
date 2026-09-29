@@ -1,0 +1,28 @@
+* 74HC86 - tabela verdade das quatro portas
+*
+* A e B sao ondas quadradas de 1 MHz e 500 kHz, entao a cada 500 ns o par
+* (A,B) passa por LL, HL, LH, HH.  As quatro portas recebem o mesmo par.
+* Esperado: Y = A xor B  ->  L H H L, atrasado de ~18 ns (tpd a 5 V, 50 pF).
+*
+* Rode e olhe: v(a), v(b), v(y1) .. v(y4)
+*
+* LTspice : troque ".include ../74HC86.lib" pelo caminho da sua lib
+*           (ou use o simbolo 74HC86.asy, que ja traz o ModelFile).
+* ngspice : ./run_examples.sh gera a copia compativel (74hc86_ng.lib).
+
+.include ../74HC86.lib
+
+Vcc vcc 0 5
+Va  a 0 PULSE(0 5 250n 6n 6n 494n 1u)
+Vb  b 0 PULSE(0 5 750n 6n 6n 994n 2u)
+
+X1 a b y1 a b y2 0 y3 a b y4 a b vcc 74HC86
+
+* carga padrao do datasheet (Figura 2): 50 pF em cada saida
+C1 y1 0 50p
+C2 y2 0 50p
+C3 y3 0 50p
+C4 y4 0 50p
+
+.tran 1n 4.5u 0 1n
+.end

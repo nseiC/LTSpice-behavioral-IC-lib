@@ -1,0 +1,73 @@
+* 74HC86 test 02 - input thresholds VIH / VIL (DC table, |Iout| = 20 uA)
+* Gates 1 and 3 are buffers (B = GND), gates 2 and 4 inverters (B = VCC).
+* Gates 1/2 get A = VIH, gates 3/4 get A = VIL.  Every output must be within
+* 0.1 V of its rail while a 20 uA load pulls it the wrong way.
+.include 74hc86_ng.lib
+Vcc vcc 0 4.5
+Vh  ah 0 3.15
+Vl  al 0 1.35
+X1 ah 0 y1 ah vcc y2 0 y3 al 0 y4 al vcc vcc 74HC86
+Il1 y1 0 20u
+Il2 vcc y2 20u
+Il3 vcc y3 20u
+Il4 y4 0 20u
+.control
+set noaskquit
+echo "--- test 02: input thresholds ---"
+
+alter Vcc = 2
+alter Vh = 1.5
+alter Vl = 0.5
+op
+print v(y1) v(y2) v(y3) v(y4)
+if (v(y1) > 2-0.1) & (v(y2) < 0.1) & (v(y3) < 0.1) & (v(y4) > 2-0.1)
+  echo "PASS 02 VCC=2 V: VIH=1.5 V and VIL=0.5 V give rail outputs at 20 uA"
+else
+  echo "FAIL 02 VCC=2 V"
+end
+
+alter Vcc = 3
+alter Vh = 2.1
+alter Vl = 0.9
+op
+print v(y1) v(y2) v(y3) v(y4)
+if (v(y1) > 3-0.1) & (v(y2) < 0.1) & (v(y3) < 0.1) & (v(y4) > 3-0.1)
+  echo "PASS 02 VCC=3 V: VIH=2.1 V and VIL=0.9 V give rail outputs at 20 uA"
+else
+  echo "FAIL 02 VCC=3 V"
+end
+
+alter Vcc = 4.5
+alter Vh = 3.15
+alter Vl = 1.35
+op
+print v(y1) v(y2) v(y3) v(y4)
+if (v(y1) > 4.5-0.1) & (v(y2) < 0.1) & (v(y3) < 0.1) & (v(y4) > 4.5-0.1)
+  echo "PASS 02 VCC=4.5 V: VIH=3.15 V and VIL=1.35 V give rail outputs at 20 uA"
+else
+  echo "FAIL 02 VCC=4.5 V"
+end
+
+alter Vcc = 6
+alter Vh = 4.2
+alter Vl = 1.8
+op
+print v(y1) v(y2) v(y3) v(y4)
+if (v(y1) > 6-0.1) & (v(y2) < 0.1) & (v(y3) < 0.1) & (v(y4) > 6-0.1)
+  echo "PASS 02 VCC=6 V: VIH=4.2 V and VIL=1.8 V give rail outputs at 20 uA"
+else
+  echo "FAIL 02 VCC=6 V"
+end
+
+* threshold itself: sweep A at 4.5 V, switching point must be VCC/2
+alter Vcc = 4.5
+dc Vh 0 4.5 1m
+meas dc vsw find v(ah) when v(y1)=2.25
+if (abs(vsw-2.25) < 0.05)
+  echo "PASS 02 switching point at VCC/2 (no hysteresis)"
+else
+  echo "FAIL 02 switching point"
+end
+quit
+.endc
+.end

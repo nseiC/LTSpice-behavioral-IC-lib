@@ -1,0 +1,251 @@
+*------------------------------------------------------------------------------
+* 74HC86 - Quad 2-input exclusive-OR gate, high-speed silicon-gate CMOS
+* Behavioral ("functional") macromodel for LTspice.
+*
+* Based on:
+*   ON Semiconductor, "74HC86 - Quad 2-Input Exclusive OR Gate",
+*   publication 74HC86/D, March 2007 - Rev. 1
+*
+* This is NOT a transistor-level model.  Each of the four gates is reproduced
+* by its terminal behaviour: a CMOS input threshold, the XOR function, an
+* internal propagation delay and a push-pull output stage whose strength is
+* fitted to the DC and AC ELECTRICAL CHARACTERISTICS tables.  Every number
+* comes from those tables; there are no typical values in this datasheet
+* (it defers them to the DL129/D data book), so the model sits AT THE
+* GUARANTEED LIMIT FOR -55..25 C - it is a slow-corner part, deliberately.
+*
+* ---------------------------------------------------------------------------
+* PIN ORDER  (same order as the 14-pin package, pin 1 .. pin 14)
+* ---------------------------------------------------------------------------
+*   1  A1     7  GND        13  B4
+*   2  B1     8  Y3         14  VCC
+*   3  Y1     9  A3
+*   4  A2    10  B3
+*   5  B2    11  Y4
+*   6  Y2    12  A4
+*
+*   X1 1 2 3 4 5 6 7 8 9 10 11 12 13 14 74HC86
+*
+*   Y = A xor B = /A.B + A./B        (function table: LL->L LH->H HL->H HH->L)
+*
+* Everything inside the model is referenced to GND (pin 7), not to node 0,
+* so the part works with a lifted ground.
+*
+* ---------------------------------------------------------------------------
+* WHAT IS MODELLED
+* ---------------------------------------------------------------------------
+*  * Supply 2.0 .. 6.0 V.  All VCC-dependent quantities are interpolated
+*    between the four VCC columns of the datasheet (2, 3, 4.5, 6 V) and held
+*    constant outside that range.
+*  * Inputs: CMOS threshold at VCC/2 with a narrow transition (VTHF, WTHF), so
+*    the output is at the rail for any input <= VIL or >= VIH of the table
+*    (VIL/VIH = 0.5/1.5, 0.9/2.1, 1.35/3.15, 1.8/4.2 V).  No hysteresis, as in
+*    the real HC part.  10 pF input capacitance (Cin max), ESD clamp diodes to
+*    VCC and GND, 1 Gohm leakage (0.1 uA max at 6 V allows >= 60 Mohm).
+*  * The XOR is formed from the two digitised inputs BEFORE the internal
+*    delay, so a simultaneous change on A and B produces no output glitch and
+*    a runt pulse shorter than the delay is swallowed, as in a real gate.
+*  * Propagation delay: a first-order internal lag (TAU*) followed by a
+*    comparator; the output stage then adds the load-dependent part.  With
+*    CL = 50 pF and tr = tf = 6 ns the worst of tPLH/tPHL equals the table:
+*       VCC   2.0    3.0    4.5    6.0 V
+*       tpd   100    80     20     17  ns   (model 100.2 / 80.3 / 20.0 / 17.0)
+*       tt    75     30     15     13  ns   (model  75.0 / 30.0 / 15.0 / 13.0)
+*    Because the output is a real current-limited driver, the delay and the
+*    edge rate grow with YOUR load capacitance, as in the real device.
+*  * Output stage: pull-up and pull-down, each I = Isat*tanh(V/V0), i.e. a
+*    resistor Ron = V0/Isat for small drops that saturates at Isat.  The
+*    pull-down knee V0D is set so VOL = 0.26 V exactly at the table currents
+*    (2.4 / 4.0 / 5.2 mA); the pull-up knee is 0.6*VCC, which puts VOH a
+*    little ABOVE its limit (VCC - 0.52 V) - the datasheet's VOH and tTLH
+*    cannot both sit at their limits once the pin has any capacitance.  Isat
+*    of each side is set so the 10-90 % transition time at 50 pF equals the
+*    table.  5 pF of pin capacitance (COUT) and ESD/parasitic diodes to both
+*    rails on every output; the capacitance also keeps an unloaded output
+*    from being a purely algebraic node, which the solver dislikes.
+*  * Supply current: ICCQ quiescent (2 uA max at 6 V, scaled with VCC), plus
+*    the dynamic current of CPD = 33 pF per gate, so PD = CPD*VCC^2*f as the
+*    datasheet footnote states.  Part of it is drawn by the output stage
+*    itself (COUT plus the crossover current, 9.2 pF-equivalent at 5 V =
+*    CPDO); the rest is drawn as (CPD - CPDO)*VCC/2 of charge per
+*    output transition.  Load current flows through the VCC and GND pins.
+*
+* ---------------------------------------------------------------------------
+* WHAT IS NOT MODELLED  (behavioural model - know the limits)
+* ---------------------------------------------------------------------------
+*  * No temperature model.  KT scales every delay and output strength:
+*    KT = 1 is the -55..25 C limit (default), KT = 1.25 the 85 C column and
+*    KT = 1.5 the 125 C column (at 4.5 V: tpd 25 / 30 ns vs 25 / 31 ns in the
+*    table).  KT < 1 gives a faster-than-worst-case part.
+*  * Shoot-through (crowbar) supply current with an input parked between VIL
+*    and VIH is not modelled; neither is the oscillation a real HC input can
+*    show with very slow edges (tr/tf above 500 ns at 4.5 V).
+*  * Absolute maximum ratings (7 V, +-20 mA input, +-25 mA output, 50 mA per
+*    supply pin, power dissipation) are NOT policed - the model will not
+*    blow up; the real part will.
+*  * A FLOATING input reads LOW here (through the 1 Gohm leakage).  In the
+*    real part it is undefined - tie unused inputs to GND or VCC.
+*  * Packages, TSSOP/SOIC differences and pin-to-pin skew.
+*
+* ---------------------------------------------------------------------------
+* PARAMETERS  (override per instance:  X1 ... 74HC86 KT=1.25 CIN=5p)
+* ---------------------------------------------------------------------------
+*  KT      delay / weakness factor (1 = 25 C limit, 1.25 = 85 C, 1.5 = 125 C)
+*  CIN     input capacitance per input                 (10 pF, datasheet max)
+*  COUT    output pin capacitance                      (5 pF, not in datasheet)
+*  CPD     power-dissipation capacitance per gate      (33 pF, datasheet typ)
+*  CPDO    share of CPD the output stage already draws (9.2 pF, fitted)
+*  ICCQ    quiescent supply current at 6 V            (2 uA, datasheet max)
+*  RLEAK   input leakage resistance to GND
+*  VTHF    input threshold as a fraction of VCC       (0.5)
+*  WTHF    width of the input transition, fraction of VCC
+*  KCMP    gain of the comparator after the internal lag
+*  TAU*    internal lag time constant, ns, at VCC = 2 / 3 / 4.5 / 6 V
+*  ISD*    pull-down saturation current, mA   V0D*  pull-down knee, V
+*  ISU*    pull-up   saturation current, mA   V0U*  pull-up   knee, V
+*  The TAU/IS/V0 tables are fitted to the datasheet (see README.md); change
+*  them only if you are re-fitting to another vendor's 74HC86.
+*
+* ---------------------------------------------------------------------------
+* LTspice .FRA / .AC / .OP
+* ---------------------------------------------------------------------------
+* The model has a proper DC operating point for any input state (no latches,
+* no internal oscillators, no time-dependent sources) and its only derivative
+* term (the CPD supply current) is zero at DC, so .op, .ac and the transient
+* runs that .FRA repeats all start from a well-defined state.  See README.md.
+*------------------------------------------------------------------------------
+
+.SUBCKT 74HC86 A1 B1 Y1 A2 B2 Y2 GND Y3 A3 B3 Y4 A4 B4 VCC
++ KT=1 CIN=10p COUT=5p CPD=33p CPDO=9.2p ICCQ=2u RLEAK=1G VTHF=0.5 WTHF=0.02 KCMP=10
++ TAU2=79.8 TAU3=90.2 TAU45=16.7 TAU6=13.7
++ ISD2=1.24 ISD3=4.98 ISD45=14.9 ISD6=22.2
++ V0D2=0.3 V0D3=0.494 V0D45=0.943 V0D6=1.09
++ ISU2=2.25 ISU3=9.27 ISU45=25.3 ISU6=38.9
++ V0U2=1.2 V0U3=1.8 V0U45=2.7 V0U6=3.6
+
+*==============================================================================
+* SHARED BLOCKS
+* All VCC-dependent quantities live on internal nodes in O(1) units (ns, mA, V)
+* so the solver tolerances treat them sensibly.  Each one is interpolated
+* piecewise-linearly over the datasheet's VCC columns 2 / 3 / 4.5 / 6 V and
+* clamped outside that range.  The internal lag is interpolated as a RATE
+* (1/TAU), which follows the gate's drive strength more naturally than TAU.
+*==============================================================================
+Bvcc   n_vcc GND V = max(0, V(VCC,GND))
+Bw     n_w   GND V = {WTHF}*V(n_vcc,GND) + 1m
+Brate  n_rate GND V = (1/{TAU2} + (1/{TAU3}-(1/{TAU2}))*min(max(V(n_vcc,GND)-2,0),1) + (1/{TAU45}-(1/{TAU3}))*min(max(V(n_vcc,GND)-3,0),1.5)/1.5 + (1/{TAU6}-(1/{TAU45}))*min(max(V(n_vcc,GND)-4.5,0),1.5)/1.5) / {KT}
+Bisd   n_isd GND V = ({ISD2} + ({ISD3}-({ISD2}))*min(max(V(n_vcc,GND)-2,0),1) + ({ISD45}-({ISD3}))*min(max(V(n_vcc,GND)-3,0),1.5)/1.5 + ({ISD6}-({ISD45}))*min(max(V(n_vcc,GND)-4.5,0),1.5)/1.5) / {KT}
+Bisu   n_isu GND V = ({ISU2} + ({ISU3}-({ISU2}))*min(max(V(n_vcc,GND)-2,0),1) + ({ISU45}-({ISU3}))*min(max(V(n_vcc,GND)-3,0),1.5)/1.5 + ({ISU6}-({ISU45}))*min(max(V(n_vcc,GND)-4.5,0),1.5)/1.5) / {KT}
+Bv0d   n_v0d GND V = ({V0D2} + ({V0D3}-({V0D2}))*min(max(V(n_vcc,GND)-2,0),1) + ({V0D45}-({V0D3}))*min(max(V(n_vcc,GND)-3,0),1.5)/1.5 + ({V0D6}-({V0D45}))*min(max(V(n_vcc,GND)-4.5,0),1.5)/1.5)
+Bv0u   n_v0u GND V = ({V0U2} + ({V0U3}-({V0U2}))*min(max(V(n_vcc,GND)-2,0),1) + ({V0U45}-({V0U3}))*min(max(V(n_vcc,GND)-3,0),1.5)/1.5 + ({V0U6}-({V0U45}))*min(max(V(n_vcc,GND)-4.5,0),1.5)/1.5)
+
+* quiescent supply current: ICCQ at 6 V, proportional to VCC
+Bicc   VCC GND I = {ICCQ}*V(n_vcc,GND)/6
+
+* ESD / parasitic junctions on every signal pin
+.model DESD D(IS=1e-18 RS=5 CJO=0)
+
+*==============================================================================
+* THE FOUR GATES  (identical)
+*   n_a, n_b : inputs digitised to 0..1 around VTHF*VCC
+*   n_x      : XOR = a + b - 2ab   (exact on 0/1, smooth in between)
+*   n_l      : internal first-order lag, time constant TAU(VCC)*KT
+*              (1 nF node, current = (x - l) * rate[1/ns])
+*   n_d      : comparator on the lag - the drive of the output stage
+*   Bu / Bn  : pull-up / pull-down, I = Isat * tanh(V/V0)
+*   Bp       : dynamic supply current, (CPD-CPDO)*VCC/2 per transition of n_d
+*==============================================================================
+* --- gate 1:  Y1 = A1 xor B1  (pins 1 2 -> 3) ---
+Cia1  A1 GND {CIN}
+Cib1  B1 GND {CIN}
+Rla1  A1 GND {RLEAK}
+Rlb1  B1 GND {RLEAK}
+Dap1  A1 VCC DESD
+Dan1  GND A1 DESD
+Dbp1  B1 VCC DESD
+Dbn1  GND B1 DESD
+Bx1   n_x1 GND V = V(n_a1,GND) + V(n_b1,GND) - 2*V(n_a1,GND)*V(n_b1,GND)
+Ba1   n_a1 GND V = 0.5 + 0.5*tanh((V(A1,GND) - {VTHF}*V(n_vcc,GND))/V(n_w,GND))
+Bb1   n_b1 GND V = 0.5 + 0.5*tanh((V(B1,GND) - {VTHF}*V(n_vcc,GND))/V(n_w,GND))
+Bl1   GND n_l1 I = (V(n_x1,GND) - V(n_l1,GND))*V(n_rate,GND)
+Cl1   n_l1 GND 1n
+Rl1   n_l1 GND 1G
+Bd1   n_d1 GND V = min(1, max(0, (V(n_l1,GND)-0.5)*{KCMP} + 0.5))
+Bu1   VCC Y1 I = V(n_d1,GND)     * 1m*V(n_isu,GND) * tanh(V(VCC,Y1)/V(n_v0u,GND))
+Bn1   Y1 GND I = (1-V(n_d1,GND)) * 1m*V(n_isd,GND) * tanh(V(Y1,GND)/V(n_v0d,GND))
+Cy1   Y1 GND {COUT}
+Dyp1  Y1 VCC DESD
+Dyn1  GND Y1 DESD
+Bp1   VCC GND I = 0.5*max(0,{CPD}-{CPDO})*V(n_vcc,GND)*abs(ddt(V(n_d1,GND)))
+
+* --- gate 2:  Y2 = A2 xor B2  (pins 4 5 -> 6) ---
+Cia2  A2 GND {CIN}
+Cib2  B2 GND {CIN}
+Rla2  A2 GND {RLEAK}
+Rlb2  B2 GND {RLEAK}
+Dap2  A2 VCC DESD
+Dan2  GND A2 DESD
+Dbp2  B2 VCC DESD
+Dbn2  GND B2 DESD
+Bx2   n_x2 GND V = V(n_a2,GND) + V(n_b2,GND) - 2*V(n_a2,GND)*V(n_b2,GND)
+Ba2   n_a2 GND V = 0.5 + 0.5*tanh((V(A2,GND) - {VTHF}*V(n_vcc,GND))/V(n_w,GND))
+Bb2   n_b2 GND V = 0.5 + 0.5*tanh((V(B2,GND) - {VTHF}*V(n_vcc,GND))/V(n_w,GND))
+Bl2   GND n_l2 I = (V(n_x2,GND) - V(n_l2,GND))*V(n_rate,GND)
+Cl2   n_l2 GND 1n
+Rl2   n_l2 GND 1G
+Bd2   n_d2 GND V = min(1, max(0, (V(n_l2,GND)-0.5)*{KCMP} + 0.5))
+Bu2   VCC Y2 I = V(n_d2,GND)     * 1m*V(n_isu,GND) * tanh(V(VCC,Y2)/V(n_v0u,GND))
+Bn2   Y2 GND I = (1-V(n_d2,GND)) * 1m*V(n_isd,GND) * tanh(V(Y2,GND)/V(n_v0d,GND))
+Cy2   Y2 GND {COUT}
+Dyp2  Y2 VCC DESD
+Dyn2  GND Y2 DESD
+Bp2   VCC GND I = 0.5*max(0,{CPD}-{CPDO})*V(n_vcc,GND)*abs(ddt(V(n_d2,GND)))
+
+* --- gate 3:  Y3 = A3 xor B3  (pins 9 10 -> 8) ---
+Cia3  A3 GND {CIN}
+Cib3  B3 GND {CIN}
+Rla3  A3 GND {RLEAK}
+Rlb3  B3 GND {RLEAK}
+Dap3  A3 VCC DESD
+Dan3  GND A3 DESD
+Dbp3  B3 VCC DESD
+Dbn3  GND B3 DESD
+Bx3   n_x3 GND V = V(n_a3,GND) + V(n_b3,GND) - 2*V(n_a3,GND)*V(n_b3,GND)
+Ba3   n_a3 GND V = 0.5 + 0.5*tanh((V(A3,GND) - {VTHF}*V(n_vcc,GND))/V(n_w,GND))
+Bb3   n_b3 GND V = 0.5 + 0.5*tanh((V(B3,GND) - {VTHF}*V(n_vcc,GND))/V(n_w,GND))
+Bl3   GND n_l3 I = (V(n_x3,GND) - V(n_l3,GND))*V(n_rate,GND)
+Cl3   n_l3 GND 1n
+Rl3   n_l3 GND 1G
+Bd3   n_d3 GND V = min(1, max(0, (V(n_l3,GND)-0.5)*{KCMP} + 0.5))
+Bu3   VCC Y3 I = V(n_d3,GND)     * 1m*V(n_isu,GND) * tanh(V(VCC,Y3)/V(n_v0u,GND))
+Bn3   Y3 GND I = (1-V(n_d3,GND)) * 1m*V(n_isd,GND) * tanh(V(Y3,GND)/V(n_v0d,GND))
+Cy3   Y3 GND {COUT}
+Dyp3  Y3 VCC DESD
+Dyn3  GND Y3 DESD
+Bp3   VCC GND I = 0.5*max(0,{CPD}-{CPDO})*V(n_vcc,GND)*abs(ddt(V(n_d3,GND)))
+
+* --- gate 4:  Y4 = A4 xor B4  (pins 12 13 -> 11) ---
+Cia4  A4 GND {CIN}
+Cib4  B4 GND {CIN}
+Rla4  A4 GND {RLEAK}
+Rlb4  B4 GND {RLEAK}
+Dap4  A4 VCC DESD
+Dan4  GND A4 DESD
+Dbp4  B4 VCC DESD
+Dbn4  GND B4 DESD
+Bx4   n_x4 GND V = V(n_a4,GND) + V(n_b4,GND) - 2*V(n_a4,GND)*V(n_b4,GND)
+Ba4   n_a4 GND V = 0.5 + 0.5*tanh((V(A4,GND) - {VTHF}*V(n_vcc,GND))/V(n_w,GND))
+Bb4   n_b4 GND V = 0.5 + 0.5*tanh((V(B4,GND) - {VTHF}*V(n_vcc,GND))/V(n_w,GND))
+Bl4   GND n_l4 I = (V(n_x4,GND) - V(n_l4,GND))*V(n_rate,GND)
+Cl4   n_l4 GND 1n
+Rl4   n_l4 GND 1G
+Bd4   n_d4 GND V = min(1, max(0, (V(n_l4,GND)-0.5)*{KCMP} + 0.5))
+Bu4   VCC Y4 I = V(n_d4,GND)     * 1m*V(n_isu,GND) * tanh(V(VCC,Y4)/V(n_v0u,GND))
+Bn4   Y4 GND I = (1-V(n_d4,GND)) * 1m*V(n_isd,GND) * tanh(V(Y4,GND)/V(n_v0d,GND))
+Cy4   Y4 GND {COUT}
+Dyp4  Y4 VCC DESD
+Dyn4  GND Y4 DESD
+Bp4   VCC GND I = 0.5*max(0,{CPD}-{CPDO})*V(n_vcc,GND)*abs(ddt(V(n_d4,GND)))
+
+
+.ENDS 74HC86

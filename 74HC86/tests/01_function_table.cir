@@ -1,0 +1,60 @@
+* 74HC86 test 01 - function table, all four gates, VCC = 2 / 4.5 / 6 V
+.include 74hc86_ng.lib
+Vcc vcc 0 4.5
+* gate 1: L L   gate 2: L H   gate 3: H L   gate 4: H H
+Va1 a1 0 0
+Vb1 b1 0 0
+Va2 a2 0 0
+Vb2 b2 vcc 0
+Va3 a3 vcc 0
+Vb3 b3 0 0
+Va4 a4 vcc 0
+Vb4 b4 vcc 0
+X1 a1 b1 y1 a2 b2 y2 0 y3 a3 b3 y4 a4 b4 vcc 74HC86
+.control
+set noaskquit
+echo "--- test 01: function table ---"
+
+alter Vcc = 2
+op
+print v(y1) v(y2) v(y3) v(y4)
+if (v(y1) < 0.1) & (v(y2) > 2-0.1) & (v(y3) > 2-0.1) & (v(y4) < 0.1)
+  echo "PASS 01 VCC=2 V: LL->L LH->H HL->H HH->L (gate 1/2/3/4)"
+else
+  echo "FAIL 01 VCC=2 V"
+end
+
+alter Vcc = 4.5
+op
+print v(y1) v(y2) v(y3) v(y4)
+if (v(y1) < 0.1) & (v(y2) > 4.5-0.1) & (v(y3) > 4.5-0.1) & (v(y4) < 0.1)
+  echo "PASS 01 VCC=4.5 V: LL->L LH->H HL->H HH->L (gate 1/2/3/4)"
+else
+  echo "FAIL 01 VCC=4.5 V"
+end
+
+alter Vcc = 6
+op
+print v(y1) v(y2) v(y3) v(y4)
+if (v(y1) < 0.1) & (v(y2) > 6-0.1) & (v(y3) > 6-0.1) & (v(y4) < 0.1)
+  echo "PASS 01 VCC=6 V: LL->L LH->H HL->H HH->L (gate 1/2/3/4)"
+else
+  echo "FAIL 01 VCC=6 V"
+end
+
+* same table rotated one gate, so every gate sees every input pair
+alter Va1 = 0
+alter Vb2 = -4.5
+alter Va3 = -4.5
+alter Vb4 = -4.5
+alter Vcc = 4.5
+op
+print v(y1) v(y2) v(y3) v(y4)
+if (v(y1) < 0.1) & (v(y2) < 0.1) & (v(y3) < 0.1) & (v(y4) > 4.4)
+  echo "PASS 01 rotated: gates 2/3 with both inputs low, gate 4 with one input low"
+else
+  echo "FAIL 01 rotated"
+end
+quit
+.endc
+.end

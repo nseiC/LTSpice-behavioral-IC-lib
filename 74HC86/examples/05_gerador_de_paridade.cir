@@ -1,0 +1,25 @@
+* 74HC86 - gerador de paridade de 4 bits
+*
+*   P = D0 xor D1 xor D2 xor D3     (P = 1 quando o numero de uns e impar)
+*
+* Porta 1: D0 xor D1, porta 2: D2 xor D3, porta 3: junta as duas.  Um
+* contador binario (fontes PULSE de 1, 2, 4 e 8 us) passa pelas 16
+* combinacoes.  Note o atraso de DOIS niveis de porta ate P, e os "glitches"
+* de P quando varios bits mudam quase juntos - o XOR em cascata nao e
+* livre de corrida.
+*
+* Rode e olhe: v(d0) .. v(d3), v(p)
+
+.include ../74HC86.lib
+
+Vcc vcc 0 5
+V0 d0 0 PULSE(0 5 250n 6n 6n 494n 1u)
+V1 d1 0 PULSE(0 5 750n 6n 6n 994n 2u)
+V2 d2 0 PULSE(0 5 1750n 6n 6n 1994n 4u)
+V3 d3 0 PULSE(0 5 3750n 6n 6n 3994n 8u)
+
+X1 d0 d1 p01 d2 d3 p23 0 p p01 p23 y4 0 0 vcc 74HC86
+CL p 0 50p
+
+.tran 1n 16.5u 0 1n
+.end

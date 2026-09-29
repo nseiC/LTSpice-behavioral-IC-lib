@@ -1,0 +1,51 @@
+* 74HC86 - PLL com detector de fase XOR (malha fechada)
+*
+*   ref (100 kHz) --> XOR --> filtro lag-lead --> VCO --+--> saida
+*                      ^                                |
+*                      +--------------------------------+
+*
+* Detector de fase: porta 1 do 74HC86, Kd = VCC/pi = 1,59 V/rad (exemplo 03).
+* VCO: ideal (comportamental), 90 kHz em 2,5 V, Kv = 10 kHz/V.  Saida
+*      quadrada 0..5 V pela porta 2, usada como buffer.
+* Filtro: R1 = 10k, R2 = 1k, C = 100 nF (lag-lead passivo)
+*      wn = sqrt(Kd*Kv/((R1+R2)*C)) ~ 1,5 kHz,  zeta ~ 0,5
+*
+* Travado em 100 kHz o VCO precisa de 3,5 V, entao o erro de fase assenta em
+* 3,5/5 * 180 = 126 graus: um PLL com XOR trava com a entrada e a saida
+* defasadas, nao em fase.
+*
+* Vinj: fonte de 0 V em serie entre o filtro e o VCO (entrada de alta
+* impedancia).  E ali que se injeta o sinal para medir o ganho de malha:
+* no LTspice, troque Vinj pelo componente FRA (veja o README).
+*
+* Rode e olhe: v(ref), v(vco), v(vc), v(y)
+
+.include ../74HC86.lib
+
+.param F0=90k KV=10k fref=100k
+Vcc  vcc 0 5
+Vref ref 0 PULSE(0 5 0 20n 20n {0.5/fref-20n} {1/fref})
+
+* --- detector de fase + buffer da saida do VCO --------------------------
+X1 ref vco y osc 0 vco 0 y3 0 0 y4 0 0 vcc 74HC86
+
+* --- filtro lag-lead ----------------------------------------------------
+R1 y  n1 10k
+R2 n1 nc 1k
+C1 nc 0  100n
+C2 n1 0  1n
+
+* --- ponto de injecao do FRA (0 V = malha fechada normal) --------------
+Vinj vc n1 0
+
+* --- VCO ideal: oscilador harmonico (x, z) com amplitude estabilizada ---
+Bf  fr 0 V = {F0} + {KV}*(min(max(V(vc),0),5) - 2.5)
+Bx  0 x I = 1n*(-6.2831853*V(fr)*V(z) + 1e5*(1-V(x)*V(x)-V(z)*V(z))*V(x))
+Cx  x 0 1n
+Bz  0 z I = 1n*( 6.2831853*V(fr)*V(x) + 1e5*(1-V(x)*V(x)-V(z)*V(z))*V(z))
+Cz  z 0 1n
+Bo  osc 0 V = 2.5 + 2.5*tanh(20*V(x))
+.ic V(x)=1 V(z)=0
+
+.tran 10n 4m 0 20n
+.end

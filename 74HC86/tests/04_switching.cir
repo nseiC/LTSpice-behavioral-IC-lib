@@ -1,0 +1,138 @@
+* 74HC86 test 04 - switching characteristics (AC table, CL = 50 pF,
+* tr = tf = 6 ns).  The model sits at the 25 C guaranteed limit: the worse
+* of tPLH/tPHL and of tTLH/tTHL must be <= the limit and within 3 % of it.
+* Then KT = 1.25 / 1.5 must reproduce the 85 C / 125 C columns.
+.include 74hc86_ng.lib
+.param vc=4.5 per=200n kt=1
+Vcc vcc 0 {vc}
+Va a 0 PULSE(0 {vc} 10n 6n 6n {per/2} {per})
+X1 a 0 y a vcc yi 0 y3 0 0 y4 0 0 vcc 74HC86 KT={kt}
+CL  y  0 50p
+CLi yi 0 50p
+.control
+set noaskquit
+echo "--- test 04: switching ---"
+
+alterparam vc = 2
+alterparam per = 1000n
+alterparam kt = 1
+reset
+tran 0.05n 1000n 0 0.1n
+meas tran tplh TRIG v(a) VAL=1.0 RISE=1 TARG v(y) VAL=1.0 RISE=1
+meas tran tphl TRIG v(a) VAL=1.0 FALL=1 TARG v(y) VAL=1.0 FALL=1
+meas tran ttlh TRIG v(y) VAL=0.2 RISE=1 TARG v(y) VAL=1.8 RISE=1
+meas tran tthl TRIG v(y) VAL=1.8 FALL=1 TARG v(y) VAL=0.2 FALL=1
+meas tran ipl TRIG v(a) VAL=1.0 RISE=1 TARG v(yi) VAL=1.0 FALL=1
+meas tran iph TRIG v(a) VAL=1.0 FALL=1 TARG v(yi) VAL=1.0 RISE=1
+let tpm = max(max(tplh,tphl),max(ipl,iph))
+let ttm = max(ttlh,tthl)
+print tplh tphl ipl iph ttlh tthl
+if (tpm <= 100n*1.005) & (tpm > 100n*0.97) & (ttm <= 75n*1.03) & (ttm > 75n*0.97)
+  echo "PASS 04 VCC=2 V KT=1: tpd $&tpm s (limit 100 ns), tt $&ttm s (limit 75 ns)"
+else
+  echo "FAIL 04 VCC=2 V KT=1: tpd $&tpm tt $&ttm"
+end
+
+alterparam vc = 3
+alterparam per = 1000n
+alterparam kt = 1
+reset
+tran 0.05n 1000n 0 0.1n
+meas tran tplh TRIG v(a) VAL=1.5 RISE=1 TARG v(y) VAL=1.5 RISE=1
+meas tran tphl TRIG v(a) VAL=1.5 FALL=1 TARG v(y) VAL=1.5 FALL=1
+meas tran ttlh TRIG v(y) VAL=0.30000000000000004 RISE=1 TARG v(y) VAL=2.7 RISE=1
+meas tran tthl TRIG v(y) VAL=2.7 FALL=1 TARG v(y) VAL=0.30000000000000004 FALL=1
+meas tran ipl TRIG v(a) VAL=1.5 RISE=1 TARG v(yi) VAL=1.5 FALL=1
+meas tran iph TRIG v(a) VAL=1.5 FALL=1 TARG v(yi) VAL=1.5 RISE=1
+let tpm = max(max(tplh,tphl),max(ipl,iph))
+let ttm = max(ttlh,tthl)
+print tplh tphl ipl iph ttlh tthl
+if (tpm <= 80n*1.005) & (tpm > 80n*0.97) & (ttm <= 30n*1.03) & (ttm > 30n*0.97)
+  echo "PASS 04 VCC=3 V KT=1: tpd $&tpm s (limit 80 ns), tt $&ttm s (limit 30 ns)"
+else
+  echo "FAIL 04 VCC=3 V KT=1: tpd $&tpm tt $&ttm"
+end
+
+alterparam vc = 4.5
+alterparam per = 200n
+alterparam kt = 1
+reset
+tran 0.05n 200n 0 0.1n
+meas tran tplh TRIG v(a) VAL=2.25 RISE=1 TARG v(y) VAL=2.25 RISE=1
+meas tran tphl TRIG v(a) VAL=2.25 FALL=1 TARG v(y) VAL=2.25 FALL=1
+meas tran ttlh TRIG v(y) VAL=0.45 RISE=1 TARG v(y) VAL=4.05 RISE=1
+meas tran tthl TRIG v(y) VAL=4.05 FALL=1 TARG v(y) VAL=0.45 FALL=1
+meas tran ipl TRIG v(a) VAL=2.25 RISE=1 TARG v(yi) VAL=2.25 FALL=1
+meas tran iph TRIG v(a) VAL=2.25 FALL=1 TARG v(yi) VAL=2.25 RISE=1
+let tpm = max(max(tplh,tphl),max(ipl,iph))
+let ttm = max(ttlh,tthl)
+print tplh tphl ipl iph ttlh tthl
+if (tpm <= 20n*1.005) & (tpm > 20n*0.97) & (ttm <= 15n*1.03) & (ttm > 15n*0.97)
+  echo "PASS 04 VCC=4.5 V KT=1: tpd $&tpm s (limit 20 ns), tt $&ttm s (limit 15 ns)"
+else
+  echo "FAIL 04 VCC=4.5 V KT=1: tpd $&tpm tt $&ttm"
+end
+
+alterparam vc = 6
+alterparam per = 200n
+alterparam kt = 1
+reset
+tran 0.05n 200n 0 0.1n
+meas tran tplh TRIG v(a) VAL=3.0 RISE=1 TARG v(y) VAL=3.0 RISE=1
+meas tran tphl TRIG v(a) VAL=3.0 FALL=1 TARG v(y) VAL=3.0 FALL=1
+meas tran ttlh TRIG v(y) VAL=0.6000000000000001 RISE=1 TARG v(y) VAL=5.4 RISE=1
+meas tran tthl TRIG v(y) VAL=5.4 FALL=1 TARG v(y) VAL=0.6000000000000001 FALL=1
+meas tran ipl TRIG v(a) VAL=3.0 RISE=1 TARG v(yi) VAL=3.0 FALL=1
+meas tran iph TRIG v(a) VAL=3.0 FALL=1 TARG v(yi) VAL=3.0 RISE=1
+let tpm = max(max(tplh,tphl),max(ipl,iph))
+let ttm = max(ttlh,tthl)
+print tplh tphl ipl iph ttlh tthl
+if (tpm <= 17n*1.005) & (tpm > 17n*0.97) & (ttm <= 13n*1.03) & (ttm > 13n*0.97)
+  echo "PASS 04 VCC=6 V KT=1: tpd $&tpm s (limit 17 ns), tt $&ttm s (limit 13 ns)"
+else
+  echo "FAIL 04 VCC=6 V KT=1: tpd $&tpm tt $&ttm"
+end
+
+alterparam vc = 4.5
+alterparam per = 200n
+alterparam kt = 1.25
+reset
+tran 0.05n 200n 0 0.1n
+meas tran tplh TRIG v(a) VAL=2.25 RISE=1 TARG v(y) VAL=2.25 RISE=1
+meas tran tphl TRIG v(a) VAL=2.25 FALL=1 TARG v(y) VAL=2.25 FALL=1
+meas tran ttlh TRIG v(y) VAL=0.45 RISE=1 TARG v(y) VAL=4.05 RISE=1
+meas tran tthl TRIG v(y) VAL=4.05 FALL=1 TARG v(y) VAL=0.45 FALL=1
+meas tran ipl TRIG v(a) VAL=2.25 RISE=1 TARG v(yi) VAL=2.25 FALL=1
+meas tran iph TRIG v(a) VAL=2.25 FALL=1 TARG v(yi) VAL=2.25 RISE=1
+let tpm = max(max(tplh,tphl),max(ipl,iph))
+let ttm = max(ttlh,tthl)
+print tplh tphl ipl iph ttlh tthl
+if (tpm <= 25n*1.005) & (tpm > 25n*0.9) & (ttm <= 19n*1.06) & (ttm > 19n*0.9)
+  echo "PASS 04 VCC=4.5 V KT=1.25: tpd $&tpm s (limit 25 ns), tt $&ttm s (limit 19 ns)"
+else
+  echo "FAIL 04 VCC=4.5 V KT=1.25: tpd $&tpm tt $&ttm"
+end
+
+alterparam vc = 4.5
+alterparam per = 200n
+alterparam kt = 1.5
+reset
+tran 0.05n 200n 0 0.1n
+meas tran tplh TRIG v(a) VAL=2.25 RISE=1 TARG v(y) VAL=2.25 RISE=1
+meas tran tphl TRIG v(a) VAL=2.25 FALL=1 TARG v(y) VAL=2.25 FALL=1
+meas tran ttlh TRIG v(y) VAL=0.45 RISE=1 TARG v(y) VAL=4.05 RISE=1
+meas tran tthl TRIG v(y) VAL=4.05 FALL=1 TARG v(y) VAL=0.45 FALL=1
+meas tran ipl TRIG v(a) VAL=2.25 RISE=1 TARG v(yi) VAL=2.25 FALL=1
+meas tran iph TRIG v(a) VAL=2.25 FALL=1 TARG v(yi) VAL=2.25 RISE=1
+let tpm = max(max(tplh,tphl),max(ipl,iph))
+let ttm = max(ttlh,tthl)
+print tplh tphl ipl iph ttlh tthl
+if (tpm <= 31n*1.005) & (tpm > 31n*0.9) & (ttm <= 22n*1.06) & (ttm > 22n*0.9)
+  echo "PASS 04 VCC=4.5 V KT=1.5: tpd $&tpm s (limit 31 ns), tt $&ttm s (limit 22 ns)"
+else
+  echo "FAIL 04 VCC=4.5 V KT=1.5: tpd $&tpm tt $&ttm"
+end
+
+quit
+.endc
+.end

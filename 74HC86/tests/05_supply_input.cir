@@ -1,0 +1,50 @@
+* 74HC86 test 05 - supply current (ICC, CPD) and input (Iin, Cin)
+.include 74hc86_ng.lib
+.param vc=6
+Vcc vcc 0 {vc}
+Va  a 0 {vc}
+Vp  p 0 PULSE(0 5 100n 6n 6n 494n 1u)
+X2 p 0 yp 0 0 q2 0 q3 0 0 q4 0 0 vcc2 74HC86
+Vcc2 vcc2 0 5
+X1 a 0 y1 0 0 y2 0 y3 0 0 y4 0 0 vcc 74HC86
+.control
+set noaskquit
+echo "--- test 05: supply and input ---"
+
+* static: VCC = 6 V, inputs at the rails, no load
+op
+print i(Vcc) i(Va)
+if (abs(i(Vcc)) <= 2.001u)
+  echo "PASS 05a quiescent ICC <= 2 uA at 6 V (datasheet max 2 uA)"
+else
+  echo "FAIL 05a ICC"
+end
+if (abs(i(Va)) <= 0.1u)
+  echo "PASS 05b input leakage <= 0.1 uA at Vin = VCC = 6 V"
+else
+  echo "FAIL 05b Iin"
+end
+
+* dynamic: 1 MHz square wave on A1 at 5 V, no load on Y1.  The extra supply
+* current must be CPD*VCC*f = 33p*5*1M = 165 uA (datasheet PD = CPD*VCC^2*f).
+alterparam vc = 5
+reset
+tran 0.1n 11u 0 1n
+meas tran iavg AVG i(Vcc2) from=1u to=11u
+meas tran qin INTEG i(Vp) from=90n to=130n
+let idyn = -iavg
+print idyn qin
+if (abs(idyn/165u-1) < 0.05)
+  echo "PASS 05c dynamic supply current $&idyn A at 1 MHz, 5 V (CPD*VCC*f = 165 uA)"
+else
+  echo "FAIL 05c dynamic ICC $&idyn"
+end
+* charge drawn by the input on a 0 -> 5 V edge = CIN*5 V = 50 pC
+if (abs(abs(qin)/50p-1) < 0.05)
+  echo "PASS 05d input capacitance 10 pF (datasheet Cin max 10 pF)"
+else
+  echo "FAIL 05d Cin, charge $&qin"
+end
+quit
+.endc
+.end

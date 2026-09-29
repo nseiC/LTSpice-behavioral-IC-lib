@@ -1,0 +1,28 @@
+* 74HC86 - oscilador em anel com habilitacao
+*
+* Tres portas ligadas em anel.  As portas 2 e 3 sao inversores (B = VCC).
+* A porta 1 recebe EN no pino B: com EN = 1 ela tambem inverte e o anel tem
+* tres inversoes -> oscila; com EN = 0 ela vira buffer, o anel tem duas
+* inversoes -> trava num estado estavel.
+*
+*   f = 1 / (2 * 3 * tpd)       tpd com a carga que cada porta ve
+*                               (10 pF da entrada seguinte + 22 pF aqui)
+*
+* Mostra na pratica que o atraso de propagacao do modelo depende de VCC:
+* o mesmo anel oscila bem mais devagar em 3 V que em 5 V (veja o .ctl).
+*
+* Rode e olhe: v(en), v(y1), v(y2), v(y3)
+
+.include ../74HC86.lib
+
+.param vc=5
+Vcc vcc 0 {vc}
+Ven en 0 PULSE(0 {vc} 1u 6n 6n 5u 100u)
+
+X1 y3 en y1 y1 vcc y2 0 y3 y2 vcc y4 0 0 vcc 74HC86
+C1 y1 0 22p
+C2 y2 0 22p
+C3 y3 0 22p
+
+.tran 0.5n 9u 0 0.5n
+.end

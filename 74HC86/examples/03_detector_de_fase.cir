@@ -1,0 +1,29 @@
+* 74HC86 - detector de fase com XOR
+*
+* Duas ondas quadradas de 100 kHz, a segunda atrasada de "fase" graus.  A
+* saida do XOR e um PWM cujo duty = fase/180; o filtro RC (tau = 1 ms,
+* muito maior que o periodo de 5 us da saida) tira a media:
+*
+*       V(media) = VCC * fase / 180       (0 .. 180 graus)
+*
+* E o detector de fase do PLL 74HC4046 (PC1) e o do exemplo 07.
+*
+* Rode e olhe: v(ref), v(sig), v(y), v(med)
+* LTspice: descomente o .step para ver a reta V(med) x fase.
+
+.include ../74HC86.lib
+
+.param fase=45 f=100k
+Vcc  vcc 0 5
+Vref ref 0 PULSE(0 5 0 6n 6n {0.5/f-6n} {1/f})
+Vsig sig 0 PULSE(0 5 {fase/360/f} 6n 6n {0.5/f-6n} {1/f})
+
+X1 ref sig y 0 0 y2 0 y3 0 0 y4 0 0 vcc 74HC86
+
+* filtro de media
+R1 y med 100k
+C1 med 0 10n
+
+.tran 10n 8m 0 10n
+*.step param fase list 0 30 60 90 120 150 180
+.end

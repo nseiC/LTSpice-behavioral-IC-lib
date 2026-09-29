@@ -1,0 +1,22 @@
+* 74HC86 - dobrador de frequencia / detector de bordas
+*
+* A porta 2 (buffer, B2 = 0) recebe o clock atraves de um RC de 1k/100p e o
+* devolve atrasado de ~80 ns e com borda limpa.  A porta 1 faz
+* clk xor clk_atrasado: um pulso de ~80 ns em CADA borda do clock, ou seja,
+* a saida tem o DOBRO da frequencia de entrada.
+*
+* Rode e olhe: v(clk), v(rc), v(dl), v(y)
+
+.include ../74HC86.lib
+
+Vcc  vcc 0 5
+Vclk clk 0 PULSE(0 5 100n 6n 6n 494n 1u)
+
+R1 clk rc 1k
+C1 rc 0 100p
+
+X1 clk dl y rc 0 dl 0 y3 0 0 y4 0 0 vcc 74HC86
+CL y 0 50p
+
+.tran 1n 6u 0 1n
+.end
