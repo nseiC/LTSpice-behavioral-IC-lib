@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/utfpr.png" alt="UTFPR – Universidade Tecnológica Federal do Paraná" width="360">
+</p>
+
 # LTSpice-behavioral-IC-lib
 
 [Português](#português) · [English](#english)
