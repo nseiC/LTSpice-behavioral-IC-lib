@@ -107,5 +107,10 @@ X1  0   pklmt caout isense mult  iac vaout vrms vref ena vsense rset ss ct vcc g
 .model DBR    D(IS=1e-9 N=1.8 RS=0.02 CJO=100p)
 .model DSCH   D(IS=1e-5 N=1.1 RS=0.05)
 
+* gear: amortece o "ringing" numerico das comutacoes da chave ideal.  Com o
+* trapezoidal, na abertura da chave o no de comutacao oscila numericamente e
+* injeta corrente falsa no indutor (saltos de amperes em um passo); a malha
+* fica caotica e o FRA mede lixo.  Ver tools/fra e o README principal.
+.options method=gear
 .tran 100n 100m 0 100n uic
 .end

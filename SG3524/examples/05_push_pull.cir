@@ -48,5 +48,10 @@ Cf vout ncf 470u IC=0
 Rcf ncf 0 30m
 Rload vout 0 2.5
 .model DFW D(IS=5e-8 N=1.05 CJO=100p TT=20n)
+* gear: amortece o "ringing" numerico das comutacoes da chave ideal.  Com o
+* trapezoidal, na abertura da chave o no de comutacao oscila numericamente e
+* injeta corrente falsa no indutor (saltos de amperes em um passo); a malha
+* fica caotica e o FRA mede lixo.  Ver tools/fra e o README principal.
+.options method=gear
 .tran 500n 12m 0 500n uic
 .end

@@ -36,5 +36,10 @@ Vclp clp 0 0
 Vclm clm 0 0
 .model PSW SW(Ron=0.1 Roff=1Meg Vt=5 Vh=1)
 .model DFW D(IS=5e-8 N=1.05 CJO=100p TT=20n)
+* gear: amortece o "ringing" numerico das comutacoes da chave ideal.  Com o
+* trapezoidal, na abertura da chave o no de comutacao oscila numericamente e
+* injeta corrente falsa no indutor (saltos de amperes em um passo); a malha
+* fica caotica e o FRA mede lixo.  Ver tools/fra e o README principal.
+.options method=gear
 .tran 500n 15m 0 500n uic
 .end
