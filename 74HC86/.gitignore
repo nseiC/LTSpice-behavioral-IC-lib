@@ -1,3 +1,4 @@
 examples/.run/
 tests/74hc86_ng.lib
 *.raw
+examples/.fra/
