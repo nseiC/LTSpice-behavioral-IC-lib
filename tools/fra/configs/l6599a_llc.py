@@ -11,6 +11,6 @@ replace = [(".include ../L6599A.lib", ".include l6599a_ng.lib"),
 inj, out, ret = "Vinj", "nfb", "out"
 tsettle = 60e-3
 freqs = [300, 700, 1500, 3000, 6000]
-settle_cycles, meas_cycles = 3, 5
+settle_cycles, meas_cycles = 4, 10
 amp, maxstep = 20e-3, 40e-9
 plot = "../../../L6599A/docs/fra_llc.png"
