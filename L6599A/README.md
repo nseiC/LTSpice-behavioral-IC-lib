@@ -68,7 +68,7 @@ inside the oscillator's direction cell, which held itself through an
 instantaneous positive-feedback loop just as it crossed halfway; it now holds
 through a 2 ns-delayed copy of its state (see *Notes*), and the 10 and 25 ns
 runs go through 4 ms. The full examples have not yet been re-run with that
-change; the 49 datasheet tests pass.
+change; the 47 datasheet checks pass.
 
 ## Pinout
 
@@ -182,7 +182,7 @@ generates the ngspice copy automatically.
 cd tests && ./run_tests.sh              # ~10 minutes
 ```
 
-All 49 checks pass:
+All 47 checks pass:
 
 | Measured | Model | Datasheet |
 |---|---|---|

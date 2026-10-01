@@ -66,7 +66,11 @@ if (abs(tstop/tstopc-1) < 0.05)
 else
   echo "FAIL 06e"
 end
-if (cssr < 0.3)
+* 06f: 10 us after the first gate, a Css that started from 0 V has reached
+* 2 V*(1-exp(-10u/62u)) = 0.30 V (6.2k * 10 nF from the 2 V of RFMIN); a
+* restart without soft-start would find it at ~2 V.  (The limit used to be
+* 0.3 V - the expected value itself, so a few ns of timing tipped it.)
+if (cssr < 0.5)
   echo "PASS 06f restart is a soft-start (Css starts from 0 V)"
 else
   echo "FAIL 06f"

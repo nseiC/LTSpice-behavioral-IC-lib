@@ -39,7 +39,7 @@ especificações que importam no projeto.
 |---|---|---|---|
 | [**SG3524**](SG3524/) | controlador PWM | datasheets Philips, ST e TI cruzados | malha aberta, buck, boost, buck-boost inversor, push-pull, circuito de teste do datasheet |
 | [**UC3854**](UC3854/) | PFC boost por corrente média | 57 verificações (datasheet 6/98) | malha aberta; PFC de 250 W da U-134 em 120 V e 230 V (FP 0,995 / 0,980) |
-| [**L6599A**](L6599A/) (L6599AD / L6599AN) | controlador ressonante LLC meia-ponte | 49 verificações (datasheet Rev 7) | LLC 12 V / 150 W da AN3233 (ZVS, burst, hiccup); fonte completa UC3854 + L6599A, 115 VCA → 12 V, FP 0,985 |
+| [**L6599A**](L6599A/) (L6599AD / L6599AN) | controlador ressonante LLC meia-ponte | 47 verificações (datasheet Rev 7) | LLC 12 V / 150 W da AN3233 (ZVS, burst, hiccup); fonte completa UC3854 + L6599A, 115 VCA → 12 V, FP 0,985 |
 | [**74HC86**](74HC86/) | 4 portas XOR de 2 entradas, CMOS HC | 30 verificações (ON Semi 74HC86/D Rev. 1), no limite garantido a 25 °C | tabela verdade, inversor controlado, detector de fase, dobrador de frequência, paridade, oscilador em anel, PLL |
 | [**IR2110**](IR2110/) (IR2113) | driver de meia-ponte, lados alto e baixo independentes | 26 verificações (IR PD60147 rev.V), valores típicos e curvas de V<sub>DD</sub> / V<sub>BIAS</sub> | tempos de comutação, shutdown ciclo a ciclo, partida do bootstrap, buck síncrono 48 V → 12 V em malha fechada |
 | [**IR2111**](IR2111/) | driver de meia-ponte de uma entrada, tempo morto interno | 22 verificações (IR PD-6.028C), valores típicos | tempo morto, meia-ponte com carga indutiva, buck síncrono 48 V → 12 V em malha fechada |
@@ -128,7 +128,7 @@ O que precisou mudar para chegar aqui (detalhes no README de cada CI):
   ngspice perdia o passo bem no meio da comutação dessa célula, durante o
   soft-start, e o exemplo do LLC abortava com passo máximo de 10, 20 ou
   25 ns. Com a correção, 10 e 25 ns rodam até 4 ms (o trecho onde
-  abortava) e os 49 testes do datasheet passam; os exemplos completos e o
+  abortava) e as 47 verificações do datasheet passam; os exemplos completos e o
   FRA ainda não foram re-rodados com ela.
 * **Exemplos de conversor:** `.options method=gear` (ver a dica abaixo).
 
@@ -181,7 +181,7 @@ that matter when you design around the part.
 |---|---|---|---|
 | [**SG3524**](SG3524/) | PWM controller | Philips, ST and TI datasheets cross-checked | open loop, buck, boost, inverting buck-boost, push-pull, datasheet test circuit |
 | [**UC3854**](UC3854/) | average-current-mode boost PFC | 57 checks (datasheet 6/98) | open loop; U-134 250 W PFC at 120 V and 230 V (PF 0.995 / 0.980) |
-| [**L6599A**](L6599A/) (L6599AD / L6599AN) | resonant LLC half-bridge controller | 49 checks (datasheet Rev 7) | AN3233 12 V / 150 W LLC (ZVS, burst, hiccup); complete UC3854 + L6599A supply, 115 VAC → 12 V, PF 0.985 |
+| [**L6599A**](L6599A/) (L6599AD / L6599AN) | resonant LLC half-bridge controller | 47 checks (datasheet Rev 7) | AN3233 12 V / 150 W LLC (ZVS, burst, hiccup); complete UC3854 + L6599A supply, 115 VAC → 12 V, PF 0.985 |
 | [**74HC86**](74HC86/) | quad 2-input XOR gate, HC CMOS | 30 checks (ON Semi 74HC86/D Rev. 1), at the 25 °C guaranteed limit | truth table, controlled inverter, phase detector, frequency doubler, parity, ring oscillator, PLL |
 | [**IR2110**](IR2110/) (IR2113) | half-bridge driver, independent high and low side | 26 checks (IR PD60147 rev.V), typical values and V<sub>DD</sub> / V<sub>BIAS</sub> curves | switching times, cycle-by-cycle shutdown, bootstrap start-up, closed-loop 48 V → 12 V synchronous buck |
 | [**IR2111**](IR2111/) | single-input half-bridge driver, internal dead time | 22 checks (IR PD-6.028C), typical values | dead time, half-bridge with inductive load, closed-loop 48 V → 12 V synchronous buck |
@@ -265,7 +265,7 @@ What had to change to get here (details in each IC's README):
   ngspice lost the time step right in the middle of that cell's transition
   during the soft-start, and the LLC example aborted with a 10, 20 or 25 ns
   maximum step. With the fix, 10 and 25 ns run through 4 ms (past where it
-  aborted) and the 49 datasheet tests pass; the full examples and the FRA
+  aborted) and the 47 datasheet checks pass; the full examples and the FRA
   have not been re-run with it yet.
 * **Converter examples:** `.options method=gear` (see the tip in the
   Portuguese section: an ideal switch with the trapezoidal integrator makes
