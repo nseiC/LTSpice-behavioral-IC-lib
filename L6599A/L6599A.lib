@@ -130,11 +130,15 @@
 *     S = set   OR ( q > 0.5 AND NOT reset )
 *     R = reset OR ( q < 0.5 AND NOT set )
 *
-* With neither input active the cell is parked at 0 or 1 on its capacitor,
-* the only DC solutions are 0 and 1, and it holds its state whatever the
-* solver's step size.  (The classic regenerative RC latch can flip to the
-* wrong solution when a stiff power stage makes the solver step far longer
-* than the latch RC - see the UC3854 model for the story.)
+* With neither input active the cell is parked at 0 or 1 on its capacitor
+* and holds its state whatever the solver's step size.  (The classic
+* regenerative RC latch can flip to the wrong solution when a stiff power
+* stage makes the solver step far longer than the latch RC - see the UC3854
+* model for the story.)  The hold terms do balance at one more point,
+* q = 5/9, where the snapped state equals the cell voltage; it is unstable,
+* and a cell driven by its input goes straight through it.  The oscillator
+* direction cell, the one that toggles every half period, holds through a
+* delayed copy of its state instead - see there.
 * Each cell below is written out as:  Bxs (set)  Bxr (reset)  Bxq (snapped
 * state)  Bx (the integrator)  Cx  Rxg.
 *==============================================================================
@@ -340,10 +344,26 @@ Bclx  n_clx GND V = max(0,min(1,({VCFL}-V(CF,GND))*{KCT}))
 Rclf  n_clx n_clf 1k
 Cclf  n_clf GND {CDOSC}
 Bcls  n_cls GND V = max(0,min(1,(V(n_clf,GND)-0.5)*{KLOG}))
+* The direction cell holds itself through a DELAYED copy of its state
+* (n_dqh: n_dq through a 2 ns RC, snapped at halfway), not through n_dq as
+* the other cells do.  With the direct hold, the set input and the hold
+* terms meet in an instantaneous positive-feedback loop of gain KLOG just as
+* the cell crosses halfway, twice per period.  In the AN3233 LLC example
+* (02) ngspice lost the time step exactly there, during the soft-start:
+* n_dl crawling through 0.45 as n_chs came on, the step cut from 0.6 ns to
+* 2.5 ps and on down to 1e-19 s - "timestep too small" at ~1.4 ms with a
+* maximum step of 10, 20 or 25 ns (not at 30 or 40 ns).  With the delayed
+* hold the cell just follows its set (or reset) input until n_dqh takes
+* over 2 ns later; there is no instantaneous loop left to resolve, and the
+* same runs complete.  The 2 ns adds nothing to the period: n_dq still
+* switches when n_dl crosses halfway.
 Bdq   n_dq  GND V = max(0,min(1,(V(n_dl,GND)-0.5)*{KLOG}))
+Rdqd  n_dq  n_dqd 1k
+Cdqd  n_dqd GND 2p
+Bdqh  n_dqh GND V = max(0,min(1,(V(n_dqd,GND)-0.5)*{KLOG}))
 Bdl   GND n_dl I = {GLAT}*(
-+     max(V(n_chs,GND), V(n_dq,GND)*(1-V(n_cls,GND)))*(1-V(n_dl,GND))
-+   - max(V(n_cls,GND), (1-V(n_dq,GND))*(1-V(n_chs,GND)))*V(n_dl,GND) )
++     max(V(n_chs,GND), V(n_dqh,GND)*(1-V(n_cls,GND)))*(1-V(n_dl,GND))
++   - max(V(n_cls,GND), (1-V(n_dqh,GND))*(1-V(n_chs,GND)))*V(n_dl,GND) )
 Cdl   n_dl GND {GLAT*TLAT}
 Rdlg  n_dl GND 1G
 * direction with a 1 ns soft edge (drives the CF current)
