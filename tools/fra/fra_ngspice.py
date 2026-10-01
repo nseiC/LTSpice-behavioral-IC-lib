@@ -20,7 +20,7 @@ Cada tom ocupa um numero inteiro de ciclos (a injecao comeca e termina em
 zero), com ciclos de acomodacao antes da janela de medida.  A componente em
 f e extraida com janela de Hann (o ripple de chaveamento nao vaza para o
 tom).  SNR = sinal em V(out) no tom / o mesmo calculo em frequencias vizinhas
-(+-3 e +-4 bins), na mesma janela; so os pontos com SNR >= snr_min (20 dB) entram no veredito - onde
+(RMS de 3 a 8 bins de cada lado), na mesma janela; so os pontos com SNR >= snr_min (20 dB) entram no veredito - onde
 |T| e muito alto o sinal em V(out) some no ripple, em qualquer FRA, inclusive
 no do LTspice.
 
@@ -145,12 +145,13 @@ def run_variant(cfg, name, amp, maxstep, workdir):
     for f, _, ta, tb in schedule(cfg):
         X, Y = dft(t, x, f, ta, tb), dft(t, y, f, ta, tb)
         T = -Y / X
-        # noise floor: the same analysis at neighbouring frequencies, +-3 and
-        # +-4 bins away (outside the Hann main lobe), in the SAME window.  A
-        # quiet stretch before the injection underestimates it: a switching
-        # converter is noisier with the tone present than without it.
+        # noise floor: RMS of the same analysis at neighbouring frequencies,
+        # 3 to 8 bins away on each side (outside the Hann main lobe), in the
+        # SAME window.  A quiet stretch before the injection underestimates
+        # it: a switching converter is noisier with the tone present.
         Tw = tb - ta
-        nx = np.mean([abs(dft(t, x, f + k / Tw, ta, tb)) for k in (-4, -3, 3, 4)])
+        nx = math.sqrt(np.mean([abs(dft(t, x, f + k / Tw, ta, tb)) ** 2
+                                for k in list(range(-8, -2)) + list(range(3, 9))]))
         res.append((f, 20 * math.log10(abs(T)), math.degrees(np.angle(T)),
                     20 * math.log10(abs(X) / max(nx, 1e-15))))
     return name, res, ""

@@ -12,7 +12,7 @@ freqs = [300, 500, 800, 1000, 1300, 1700, 2500, 4000]
 settle_cycles, meas_cycles = 6, 12
 amp, maxstep = 25e-3, 500e-9
 plot = "../../../SG3524/docs/fra_boost.png"
-settle_time, meas_time = 3e-3, 2e-3
+settle_time, meas_time = 3e-3, 5e-3
 # 25 mV: perto do cruzamento a corrente do indutor varia ~0,45 A por 25 mV de
 # injecao (capacitores de saida grandes).  Com 1 A de carga o vale da corrente
 # e ~1,4 A, entao ate 50 mV (a rodada 2x) o conversor fica em CCM; muito mais
