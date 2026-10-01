@@ -228,22 +228,23 @@ Result for the buck (100 kHz, crossover designed at 7.9 kHz):
 
 | f (Hz) | \|T\| (dB) | phase | SNR (dB) | Δ 2× amplitude | Δ dt/2 | analytic \|T\| / phase |
 |---:|---:|---:|---:|---:|---:|---:|
-| 1500 | 29.28 | −28.5° | −8.3 | *(not judged)* | *(not judged)* | 29.51 / −65.6° |
-| 2500 | 15.84 | −133.3° | 20.0 | 0.62 dB / 0.1° | 0.73 dB / 0.5° | 15.73 / −132.7° |
-| 4000 | 7.39 | −125.8° | 38.6 | 0.05 dB / 2.2° | 0.10 dB / 1.4° | 7.74 / −123.7° |
-| 6000 | 2.44 | −117.7° | 40.9 | 0.09 dB / 0.2° | 0.08 dB / 0.1° | 2.90 / −116.9° |
-| 8000 | −0.58 | −114.9° | 35.4 | 0.09 dB / 0.3° | 0.03 dB / 0.3° | −0.08 / −114.1° |
-| 12000 | −4.52 | −114.1° | 48.8 | 0.17 dB / 0.1° | 0.12 dB / 0.4° | −4.02 / −113.1° |
-| 18000 | −8.25 | −117.5° | 50.7 | 0.05 dB / 0.1° | 0.02 dB / 0.2° | −7.91 / −115.6° |
-| 25000 | −11.63 | −123.1° | 52.0 | 0.02 dB / 0.1° | 0.04 dB / 0.1° | −11.19 / −120.3° |
+| 1500 | 32.70 | −62.7° | 0.8 | *(not judged)* | *(not judged)* | 29.51 / −65.6° |
+| 2500 | 15.88 | −135.7° | 17.0 | *(not judged)* | *(not judged)* | 15.73 / −132.7° |
+| 4000 | 7.29 | −125.3° | 26.6 | 0.08 dB / 1.5° | 0.06 dB / 1.6° | 7.74 / −123.7° |
+| 6000 | 2.67 | −116.7° | 29.8 | 0.18 dB / 0.9° | 0.16 dB / 1.0° | 2.90 / −116.9° |
+| 8000 | −0.44 | −114.9° | 30.9 | 0.08 dB / 0.1° | 0.06 dB / 0.0° | −0.08 / −114.1° |
+| 12000 | −4.49 | −114.3° | 31.1 | 0.05 dB / 0.2° | 0.10 dB / 0.4° | −4.02 / −113.1° |
+| 18000 | −8.29 | −117.6° | 30.8 | 0.03 dB / 0.1° | 0.05 dB / 0.0° | −7.91 / −115.6° |
+| 25000 | −11.55 | −123.1° | 31.7 | 0.01 dB / 0.3° | 0.04 dB / 0.0° | −11.19 / −120.3° |
 
-**PASS — crossover 7.57 kHz, phase margin 64.6°.** Doubling the injection or
-halving the step moves the result by at most 0.73 dB / 2.2° on the seven
+**PASS — crossover 7.68 kHz, phase margin 64.9°.** Doubling the injection or
+halving the step moves the result by at most 0.18 dB / 1.6° on the six
 points with SNR ≥ 20 dB, and it matches the averaged small-signal loop gain
-within 0.50 dB. At 1.5 kHz the loop gain is ~30 dB: the signal left at
-V(out) is a fraction of a millivolt, buried in the 100 kHz ripple — that point
-is below the tool's 20 dB SNR floor in any FRA, LTspice's included, and is
-not judged.
+within 0.48 dB. At 1.5 and 2.5 kHz the loop gain is 16–33 dB: the signal
+left at V(out) is a fraction of a millivolt, buried in the 100 kHz ripple —
+those points are below the tool's 20 dB SNR floor (the noise is measured
+right next to the tone, in the same window) and are not judged. Even there
+the three runs agree within 1 dB / 4° at 2.5 kHz.
 
 ```
 python3 tools/fra/fra_ngspice.py tools/fra/configs/ir2110_buck.py   # ~25 min

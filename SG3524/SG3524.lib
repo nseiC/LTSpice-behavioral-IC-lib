@@ -55,9 +55,9 @@
 *    period = RT * CT (datasheet: "t = RT*CT, t in us when RT in ohm and CT in
 *    uF").  That relation fixes the ramp swing at 3.6 V; the model ramps CT
 *    from VCTL = 0.6 V to VCTH = 4.2 V.  See the note on RAMP ENDPOINTS below.
-*  * Dead time: CT is discharged by a constant IDIS so the blanking pulse is
-*    0.5 us at CT = 0.01 uF (datasheet "output pulse width") and scales
-*    linearly with CT, as in Figure 5.
+*  * Dead time: CT is discharged through a conductance GDIS onto a floor
+*    VCTMIN, so the blanking pulse is 0.5 us at CT = 0.01 uF (datasheet
+*    "output pulse width") and scales linearly with CT, as in Figure 5.
 *  * Pin 3 is driven to 3.5 V during the blanking pulse through a low
 *    impedance, and has the documented ~2 kohm impedance to ground.  Adding
 *    the recommended ~100 pF from pin 3 to ground widens the blanking pulse,
@@ -194,7 +194,7 @@ Bicc  VIN COM I = {ICC}*V(n_en,COM)
 Brt   n_rt COM V = {VRT}*V(n_en,COM)
 Vs_rt n_rt RT  0
 
-* --- CT ramp: charge with the mirrored current, discharge at IDIS ------------
+* --- CT ramp: charge with the mirrored current, discharge through GDIS -------
 * The discharge is RESISTIVE (a conductance GDIS onto the VCTMIN floor), not a
 * constant current, and that choice is what makes the oscillator step-size
 * independent.

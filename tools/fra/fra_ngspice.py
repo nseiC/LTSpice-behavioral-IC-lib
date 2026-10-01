@@ -189,7 +189,11 @@ def main(cfgfile):
         s = re.sub(r"^(\.SUBCKT %s .*)$" % re.escape(sub), r"\1 PARAMS:", s, count=1, flags=re.M)
         open(os.path.join(workdir, ng), "w").write(s)
     A, dt = cfg["amp"], cfg["maxstep"]
-    variants = [("base", A, dt), ("amp2", 2 * A, dt), ("step2", A, dt / 2)]
+    # step_factor: the "dt/2" run uses dt*step_factor (0.5 unless the circuit
+    # cannot run at half the step - then say so in its config)
+    sf = cfg.get("step_factor", 0.5)
+    sl = "dt/2" if sf == 0.5 else "%gdt" % sf
+    variants = [("base", A, dt), ("amp2", 2 * A, dt), ("step2", A, dt * sf)]
     out = {}
     with cf.ThreadPoolExecutor(max_workers=3) as ex:
         stem = os.path.splitext(os.path.basename(cfgfile))[0]
@@ -205,7 +209,7 @@ def main(cfgfile):
         print("FAIL  %s: transiente com injecao nao completou" % title)
         return 1
     ana = cfg.get("analytic")
-    hdr = "%10s %9s %8s %6s | %7s %6s | %7s %6s | %9s" % ("f (Hz)", "|T| dB", "fase", "SNR", "d(2A)", "dfase", "d(dt/2)", "dfase", "tol dB/o")
+    hdr = "%10s %9s %8s %6s | %7s %6s | %7s %6s | %9s" % ("f (Hz)", "|T| dB", "fase", "SNR", "d(2A)", "dfase", "d(%s)" % sl, "dfase", "tol dB/o")
     if ana: hdr += " | %9s %8s" % ("analit dB", "fase")
     print(hdr)
     worst_g = worst_p = 0
@@ -239,7 +243,7 @@ def main(cfgfile):
             r2 = max(abs(ga - gs) / ag, abs(das) / ap)
             if r > 1 and r2 <= 1:
                 outliers += 1
-                line += "  <- nominal fora (2x e dt/2 concordam)"
+                line += "  <- nominal fora (2x e %s concordam)" % sl
                 r = r2
             else:
                 worst_g = max(worst_g, abs(ga - g), abs(gs - g))
@@ -252,11 +256,11 @@ def main(cfgfile):
     else:
         print("RESULT sem cruzamento de 0 dB na faixa medida")
     ok = worst_r <= 1 and judged >= 3
-    msg = ("linear (2x amplitude) e independente do passo (dt/2): pior desvio %.2f dB / %.1f graus nos %d pontos "
+    msg = ("linear (2x amplitude) e independente do passo (%s): pior desvio %.2f dB / %.1f graus nos %d pontos "
            "com SNR >= %g dB (%.0f %% da tolerancia, que e o maior entre %g dB / %g graus e 3 sigma do ruido)") % (
-        worst_g, worst_p, judged, snr_min, 100 * worst_r, tol_g, tol_p)
+        sl, worst_g, worst_p, judged, snr_min, 100 * worst_r, tol_g, tol_p)
     if outliers:
-        msg += "; %d ponto(s) com o nominal fora e 2x / dt/2 concordando" % outliers
+        msg += "; %d ponto(s) com o nominal fora e 2x / %s concordando" % (outliers, sl)
     if ana and fc:
         ga = [abs(20 * math.log10(abs(ana(r[0]))) - r[1]) for r in out["base"] if r[3] >= snr_min]
         msg += "; vs analitico ate %.2f dB" % max(ga)

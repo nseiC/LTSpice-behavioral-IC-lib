@@ -81,9 +81,11 @@ Rload vout 0 2.5
 * injeta corrente falsa no indutor (saltos de amperes em um passo); a malha
 * fica caotica e o FRA mede lixo.  Ver tools/fra e o README principal.
 .options method=gear
-* passo maximo 100 ns: o tempo morto aqui e ~60 ns (CT = 1,25 nF).  Com
-* 500 ns o solver pula o cruzamento do limiar do oscilador e o periodo sai
-* 1,6 % curto e ruidoso (12,51 us contra 12,72 us a 20 ns); com 100 ns o
-* erro cai para 0,25 %.  (Ver "What to put on the schematic" no README.)
+* passo maximo 100 ns: o tempo morto aqui e ~67 ns (CT = 1,25 nF), e o pulso
+* de blanking e o clock do flip-flop que alterna as saidas.  Com 500 ns o
+* solver as vezes passa por cima dele e a mesma saida dispara duas vezes
+* seguidas (21 de 94 pulsos) - num push-pull isso empurra o transformador
+* para a saturacao.  Com 200 e 100 ns nenhuma falha em ~900 ciclos.  (Ver
+* "What to put on the schematic" no README.)
 .tran 100n 12m 0 100n uic
 .end

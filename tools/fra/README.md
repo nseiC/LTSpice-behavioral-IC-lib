@@ -68,6 +68,8 @@ do passo isolaria a `dt/2`.
 | `freqs` | os tons, em ordem |
 | `settle_cycles`/`settle_time`, `meas_cycles`/`meas_time` | acomodação e janela de cada tom: o maior entre N ciclos e o tempo |
 | `amp`, `maxstep` | amplitude e passo da rodada nominal |
+| `step_factor` | (opcional) passo da terceira rodada = `maxstep`·fator; 0,5 por padrão. Só para um circuito que não roda com metade do passo — e o config tem de dizer por quê |
+| `save_extra` | (opcional) outros vetores para salvar (para conferir o ponto de operação) |
 | `analytic` | (opcional) ganho de malha teórico para comparar |
 | `plot` | onde salvar o gráfico de Bode |
 

@@ -43,39 +43,41 @@ X1 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 SG3524
 One directive, and it is the `.tran` itself:
 
 ```
-.tran 0 <stop> 0 <maxstep>        e.g.  .tran 0 4m 0 50n
+.tran 0 <stop> 0 <maxstep>        e.g.  .tran 0 4m 0 100n
 ```
 
-**This one is not optional.** Set `maxstep` to roughly **a tenth of the dead
-time** (the dead time is 0.5 µs per 10 nF of C<sub>T</sub>): 50 ns at
-C<sub>T</sub> = 10 nF, 100 ns at 22 nF.
+Set `maxstep` to **1–2 % of the switching period**. The examples run at
+50–100 kHz with 100–200 ns, and their loop gain does not move when the step
+is halved (see *LTspice .FRA* below); a coarser step lands the PWM edges on
+the solver's step grid and the duty cycle jitters. If the power stage uses
+ideal switches (`S` elements), also add `.options method=gear` — the
+examples do, for the reason given in the same section.
 
-The reason is the blanking pulse. It *is* the dead time — 0.5 µs at
-C<sub>T</sub> = 10 nF — and it is the flip-flop's only clock. Let the solver
-take steps as long as that pulse and it steps straight over it, the flip-flop
-never sees a clock edge, and one output fires several cycles in a row while the
-other stays dark. Measured at C<sub>T</sub> = 10 nF:
+**With the outputs separate (push-pull), also keep `maxstep` near or below
+the dead time** (0.5 µs per 10 nF of C<sub>T</sub>). The blanking pulse *is*
+the dead time and the flip-flop's only clock; a step much longer than the
+pulse can skip it, and then the same output fires twice in a row — in a
+push-pull that walks the transformer towards saturation. With the outputs
+paralleled (buck, boost, …) a skipped toggle changes nothing. The discharge
+cell was rebuilt so that a long step cannot leave it half-way (see *Notes*),
+which made this rare, but not impossible. Measured at R<sub>T</sub> = 10 k
+("failed toggle" = the same output firing twice in a row):
 
-| maxstep | vs dead time | failed toggles |
-|---|---|---|
-| free running | — | 70 of 169 |
-| 500 ns | 1/1 | 76 of 168 |
-| 250 ns | 1/2 | 0 of 170 |
-| 100 ns | 1/5 | 0 of 168 |
-| 50 ns | 1/10 | 0 of 167 |
+| C<sub>T</sub> (dead time) | maxstep | failed toggles, Gear / trapezoidal | period, Gear / trapezoidal (cycle-to-cycle rms) |
+|---|---|---|---|
+| 10 nF (0.5 µs) | free running | 0 / 1 of 165 | 100.80 µs (0.01 %) / 100.82 µs (0.03 %) |
+| | 500 ns | 1 / 0 of 165 | 100.78 µs (0.04 %) / 100.83 µs (0.20 %) |
+| | 250 ns | 0 / 0 of 165 | 100.79 µs (0.05 %) / 100.86 µs (0.20 %) |
+| | 100 ns | 0 / 0 of 165 | 100.75 µs (0.04 %) / 100.84 µs (0.23 %) |
+| | 50 ns | 0 / 0 of 165 | 100.77 µs (0.07 %) / 100.84 µs (0.15 %) |
+| 1.25 nF (67 ns), the push-pull example | 500 ns | **21 of 94** (Gear) | 12.72 µs (0.08 %) |
+| | 200 ns | 0 / 0 of ~920 | 12.72 µs (0.08 %) / 12.74 µs (0.45 %) |
+| | 100 ns | 0 / 0 of ~920 | 12.72 µs (0.09 %) / 12.74 µs (0.41 %) |
 
-It survives down to half the dead time; a tenth leaves room for the rest of
-your circuit. Period accuracy improves on the same axis:
-
-| maxstep (C<sub>T</sub> = 22 nF) | period | valley |
-|---|---|---|
-| free running | 100.9 µs | 0.664 V |
-| 200 ns | 99.7 µs | 0.355 V |
-| 100 ns | 103.2 µs | 0.533 V |
-| 50 ns | 105.5 µs | 0.521 V |
-| 20 ns | 105.6 µs | 0.558 V |
-
-It has converged by 50 ns — 20 ns moves the answer by 0.1 %.
+At C<sub>T</sub> = 22 nF (Gear) the period is 221.5 µs and the valley
+0.593 V at every step from free running down to 20 ns. The period itself no
+longer depends on the step; only the toggling does, and only with steps as
+long as the dead time or longer (or none at all).
 
 **Do not relax the tolerances.** `reltol`, `abstol`, `vntol` and `trtol` should
 stay at their defaults. Relaxing them no longer breaks the model (it did before
@@ -167,9 +169,11 @@ X1 … SG3524 VREFNOM=4.6 VOS=10m IBIAS=10u DMAX=1
 ```
 
 Useful ones: `VREFNOM VDROP IREFSC ICC` (reference/supply), `VRT VCTL VCTH
-IDIS` (oscillator), `VCMIN VCMAX DMAX` (comparator), `GMEA IEAMAX VOS IBIAS
-REAO CEAO` (error amp), `VCLTH GCLV` (current limit), `VSDTH` (shutdown),
-`VCESAT RCE RLEAK` (output transistors).
+GDIS VCTMIN` (oscillator: ramp ends, discharge conductance and its floor),
+`VCMIN VCMAX DMAX` (comparator), `GMEA IEAMAX VOS IBIAS REAO CEAO` (error
+amp), `VCLTH GCLV` (current limit), `VSDTH` (shutdown), `VCESAT RCE RLEAK`
+(output transistors). `GLAT TLAT QON` set the discharge cell (see *Notes*);
+leave them alone unless you are changing the model.
 
 ## Verification
 
@@ -190,18 +194,18 @@ All 30 checks pass. What they pin down:
 | V<sub>REF</sub> load regulation at 20 mA | 20 mV | 20 mV typ |
 | V<sub>REF</sub> short-circuit current | 105 mA | 100 mA |
 | Standby I<sub>IN</sub> at V<sub>IN</sub> = 40 V | 8.0 mA | 8 mA typ, 10 mA max |
-| Oscillator period, R<sub>T</sub>=10 k, C<sub>T</sub>=10 nF | 101.0 µs | R<sub>T</sub>·C<sub>T</sub> = 100 µs |
-| …at C<sub>T</sub> = 100 nF / 2 nF / 1 nF | 1001 µs / 20.9 µs / 10.7 µs | 1000 / 20 / 10 µs |
+| Oscillator period, R<sub>T</sub>=10 k, C<sub>T</sub>=10 nF | 100.8 µs | R<sub>T</sub>·C<sub>T</sub> = 100 µs |
+| …at C<sub>T</sub> = 100 nF / 2 nF / 1 nF | 1006 µs / 20.28 µs / 10.20 µs | 1000 / 20 / 10 µs |
 | Dead time at C<sub>T</sub> = 0.01 µF | 0.50 µs | 0.5 µs |
-| Pin 3 amplitude | 3.48 V | 3.5 V<sub>p</sub> |
+| Pin 3 amplitude | 3.49 V | 3.5 V<sub>p</sub> |
 | Pin 6 voltage | 3.600 V | 3.6 V |
 | Duty at V(COMP) = 1.0 V | 0.0 % | zero duty threshold 1 V |
-| Duty at V(COMP) = 3.5 V | 45.0 % / output | max duty threshold 3.5 V, 45 % |
-| Duty at V(COMP) = 2.25 V | 22.5 % | linear |
-| Outputs paralleled | 89.4 % at f<sub>osc</sub> | 0–90 % single ended |
+| Duty at V(COMP) = 3.5 V | 44.6 % / output | max duty threshold 3.5 V, 45 % |
+| Duty at V(COMP) = 2.25 V | 21.6 % | linear |
+| Outputs paralleled | 89.2 % at f<sub>osc</sub> | 0–90 % single ended |
 | Output phasing | 180°, never overlapping | pulse-steering flip-flop + blanking |
-| V<sub>CE(sat)</sub> at 50 mA | 1.006 V | 1 V typ, 2 V max |
-| Current limit, 200 mV sense | 25.4 % duty | “input voltage required to get 25 % duty” |
+| V<sub>CE(sat)</sub> at 50 mA | 1.00 V | 1 V typ, 2 V max |
+| Current limit, 200 mV sense | 24.3 % duty | “input voltage required to get 25 % duty” |
 | Current limit, 100 / 300 mV | no action / outputs off | 200 mV threshold |
 | Shutdown pin 10 = 2 V | pin 9 → 0.22 V, outputs off | active high |
 | External sync on pin 3 | locks to 80 µs master | sync via pin 3 |
@@ -321,23 +325,15 @@ Read this before trusting a result.
   keeps working outside them, the real part does not.
 * **No 300 kHz ceiling.** That is a device limit, not a formula limit; the model
   will happily run past it.
-* **Period accuracy degrades at small C<sub>T</sub>.** Fixed internal delays
-  (latch, blanking edge, comparator windows) add a roughly constant amount to
-  every cycle, so the period runs +0.1 % at C<sub>T</sub> = 100 nF, +1 % at
-  10 nF and +7 % at 1 nF. That is the same mechanism that stops the real part
-  at 300 kHz, but do not expect three-digit frequency accuracy down at the
-  1 nF end.
+* **The period runs long by 0.6–2 %.** The ramp's valley sits a little below
+  0.6 V (the discharge cell's response time allows a small undershoot) and
+  fixed internal delays add a roughly constant amount to every cycle: +0.6 %
+  at C<sub>T</sub> = 100 nF, +0.8 % at 10 nF, +1.4 % at 2 nF, +2 % at 1 nF.
+  That is the same mechanism that stops the real part at 300 kHz; the
+  vendors' formulas disagree by 30 % among themselves anyway (see above).
 * **Reference line regulation is ideal** above the dropout point.
 * **Output edges** are a fixed ~47 ns drive slew; real edges (0.2 µs / 0.1 µs
   with R<sub>C</sub> = 2 k) are mostly set by your external load.
-* **Give the solver a sane maximum time step.** The CT discharge runs at
-  IDIS/C<sub>T</sub> volts per second - 15 V/µs with C<sub>T</sub> = 4.7 nF -
-  so a solver stepping at 20 ns moves the ramp 0.3 V per step and lands the
-  valley imprecisely. The floor at V<sub>CTMIN</sub> bounds the error to
-  0.1 V, but for clean results set the `.tran` maximum step to roughly a
-  tenth of the dead time (5 ns at C<sub>T</sub> = 4.7 nF). Measured valley
-  scatter: 0.45–0.58 V at 20 ns, 0.55–0.61 V at 5 ns; period jitter 3.5 %
-  vs 1.5 %.
 * **There is no `.op` solution while the oscillator runs** — an oscillator has
   no DC operating point, so the simulator will fall back to a transient start.
   That is expected and harmless for `.tran`. If you want a valid `.op` or an
@@ -357,6 +353,18 @@ Read this before trusting a result.
   network: a big capacitor on pin 9 slew-limits at 200 µA / C.
 * **The reference can only source.** Tying pins 15 and 16 to an external 5 V
   rail works, as the datasheet says it should.
+* **The C<sub>T</sub> discharge is resistive and its latch is not
+  regenerative.** C<sub>T</sub> discharges through a conductance (`GDIS`)
+  towards a floor below the reset threshold (`VCTMIN`), so near the reset it
+  is slowing down instead of racing through it, and a coarse step lands the
+  valley in the same place. The bit that says "discharging" is an
+  integrating set/reset cell (`GLAT`, `TLAT`, `QON`) that holds itself set
+  through the discharge but has no positive feedback, so it has no unstable
+  midpoint. An earlier version used an ordinary regenerative latch; Gear and
+  backward Euler, stepping far longer than its regeneration time, can treat
+  that midpoint as stable, and at some step sizes (50 and 100 ns, not 200 ns)
+  the buck example lost cycles or produced pulses 1.7 µs short. The
+  comments in `SG3524.lib` go through it in detail.
 
 ## Licence
 
