@@ -34,7 +34,12 @@ else
   echo "FAIL 02b"
 end
 
-meas tran tdead TRIG v(x1.n_blk) VAL=0.5 RISE=5 TARG v(x1.n_blk) VAL=0.5 FALL=5
+* the 5th blanking pulse, start to end (the falling edge AFTER that rising
+* edge: the oscillator has no true DC point, and the start-up transient may
+* or may not contribute an extra edge)
+meas tran tbr WHEN v(x1.n_blk)=0.5 RISE=5
+meas tran tbf WHEN v(x1.n_blk)=0.5 FALL=1 TD=$&tbr
+let tdead = tbf - tbr
 print tdead
 if (abs(tdead/0.5e-6 - 1) < 0.1)
   echo "PASS 02c dead time = 0.5 us at CT = 0.01 uF (datasheet output pulse width)"

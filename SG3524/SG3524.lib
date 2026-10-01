@@ -144,7 +144,7 @@
 .SUBCKT SG3524 INV NI OSC CLP CLM RT CT COM COMP SD EA CA CB EB VIN VREF
 + VREFNOM=5.0 VDROP=1.7 GREF=1 IREFSC=105m ICC=8m
 + VENL=3.6 VENW=0.8
-+ VRT=3.6 VCTL=0.6 VCTH=4.2 GDIS=72m VCTMIN=0.5 VSETH=1.5 VRSTH=0.5
++ VRT=3.6 VCTL=0.6 VCTH=4.2 GDIS=72m VCTMIN=0.5 GLAT=1m TLAT=300p QON=0.5
 + VOSCH=3.5 GOSC=0.1 IOSCMX=3m ROSC=2k COSC=10p VSYNC=2.5
 + VCMIN=1.0 VCMAX=3.5 DMAX=0.90 VPWM0=0.50
 + GMEA=2m IEAMAX=200u VOS=2m IBIAS=2u REAO=5Meg CEAO=100p
@@ -215,50 +215,75 @@ Vs_rt n_rt RT  0
 *   t_dead = (CT/GDIS) * ln((VCTH-VCTMIN)/(VCTL-VCTMIN)) = CT/GDIS * 3.61
 * GDIS = 72 mS puts that at 0.5 us for CT = 0.01 uF, the datasheet's number.
 *
+* The discharge switches on through its own short delay (n_bdis: a 2 ns RC
+* after the blanking command n_blkx - our latch or an external sync pulse -
+* thresholded at halfway), so CT is still rising -
+* and the latch's set input still active - for ~1.4 ns after the latch fires.
+* See the latch for why that matters.
 Bct   COM CT I =
 +   (1-V(n_blk,COM))*max(0,I(Vs_rt))
-+ - V(n_blk,COM)*{GDIS}*max(0, V(CT,COM)-{VCTMIN})
++ - V(n_bdis,COM)*{GDIS}*max(0, V(CT,COM)-{VCTMIN})
+Rbd   n_blkx n_bdx 1
+Cbd   n_bdx COM 2n
+Bbdis n_bdis COM V = max(0,min(1,(V(n_bdx,COM)-0.5)*10))
 Rct   CT COM 1000Meg
 
 * --- discharge latch: set at VCTH, reset at VCTL -----------------------------
-* Self-referencing B-source + 1 ns RC = one bit of state, the standard
-* LTspice idiom for a behavioural latch.
 * The comparator windows are deliberately wide: KCT = 100 is a 10 mV window on
-* a 3.6 V ramp (0.3 % timing resolution) and KLOG = 10 is a 0.1 V window on a
-* logic node.  Infinitely sharp comparators are what collapse the time step
-* once this model drives a real converter - at CT = 1 nF the ramp discharges at
-* 72 V/us, so a 0.1 mV window would have to be resolved in about a picosecond.
-* KLOG = 10 still gives the latch a loop gain of 10, so it latches properly.
+* a 3.6 V ramp (0.3 % timing resolution).  Infinitely sharp comparators are
+* what collapse the time step once this model drives a real converter - at
+* CT = 1 nF the ramp discharges at 72 V/us, so a 0.1 mV window would have to
+* be resolved in about a picosecond.
 *
-* HYSTERESIS ON BOTH THRESHOLDS (VSETH, VRSTH).  The latch must not depend on
-* its own positive feedback to finish a transition.  At CT = 1 nF the discharge
-* it starts pulls CT back below VCTH in under a nanosecond - before the latch
-* has settled - and the set input disappears.  The latch is then left at its
-* unstable midpoint (n_dsc = 5/9), and an implicit integrator taking steps much
-* longer than the 30 ps regeneration time (Gear/BDF, or backward Euler) holds
-* it there as if it were stable.  It sat there for 8 ns and fell back to 0:
-* a runt discharge to 3.1 V, a lost output pulse, a 13.4 us period in a
-* 10.2 us oscillator - three times in 3 ms at maxstep 50 ns, never at 200 ns
-* or 10 ns.  That step-size dependence is noise in a loop-gain (FRA) run.
-* Lowering the set threshold by VSETH*n_dsc as the latch moves (and raising
-* the reset threshold by VRSTH*(1-n_dsc)) makes the input itself drive every
-* transition to the end, Schmitt-trigger style.  With the latch at rest
-* (n_dsc = 0 or 1) the thresholds are exactly VCTH and VCTL, so the timing is
-* unchanged.
-Bdsc  n_dsc COM V = max(0,min(1,(V(n_dis,COM)-0.5)*{KLOG}))
-Bdis  n_disx COM V =
-+     V(n_dsc,COM)     * max(0,min(1,(V(CT,COM)-{VCTL}-{VRSTH}*(1-V(n_dsc,COM)))*{KCT}))
-+   + (1-V(n_dsc,COM)) * max(0,min(1,(V(CT,COM)-{VCTH}+{VSETH}*V(n_dsc,COM))*{KCT}))
-* 300 ps, not 1 ns: the latch delay lets CT keep discharging after the reset
-* threshold is crossed, and that undershoot (IDIS * t_latch / CT) is what sets
-* the real ramp valley.  At 1 ns it is 33 mV with CT = 10 nF but 330 mV with
-* CT = 1 nF, which would stretch the period by 9 % at the small-CT end.  At
-* 300 ps the period stays within ~1 % across the whole useful 1 nF .. 100 nF
-* range.  Going below ~300 ps buys almost nothing and starts to collapse the
-* time step when the model drives a stiff power stage.
-Rdis  n_disx n_dis 1
-Cdis  n_dis  COM 300p
-Rdisg n_dis  COM 1G
+* The bit of state is an INTEGRATING set/reset cell with NO positive feedback:
+*
+*     C dq/dt = GLAT * ( S*(1-q) - R*q )
+*     S = [CT > VCTH]  OR  ( [discharging] AND NOT R ),     R = [CT < VCTL]
+*
+* "Discharging" is n_bdis, the discharge command itself, which follows q
+* through a short delay (below).  So once the cell has started the discharge
+* it keeps itself set until the reset - but that feedback only ever pushes q
+* UP, towards 1, and the reset overrides it: while q is filling, dq/dt >= 0
+* everywhere, and there is no unstable equilibrium to get stuck on.  That is
+* the point.  The previous version was the usual
+* regenerative latch (a B source feeding its own 300 ps RC with a gain of 10),
+* and a regenerative latch always has an unstable midpoint.  An implicit
+* integrator stepping far longer than its ~30 ps regeneration time (Gear/BDF,
+* backward Euler) treats that midpoint as STABLE.  At CT = 1-2 nF the discharge
+* pulls CT back under VCTH within a nanosecond, so the set input could vanish
+* before the latch had settled; the latch then sat at the midpoint (n_dsc = 5/9)
+* and CT discharged at half strength - a runt discharge to 3.1 V and a lost
+* output pulse, or a reset at 0.9 V instead of 0.6 V and a pulse 1.7 us short.
+* It depended on the step size (seen at 50 ns and at 100 ns, not at 200 ns),
+* which is noise in a loop-gain (FRA) measurement.
+*
+* The cell drives n_dsc once it is above QON = 0.5 (fully at 0.55), and the CT
+* discharge only switches on ~1.4 ns later (n_bdis above).  Until then CT is still rising and
+* [CT > VCTH] still active; from then on the discharge holds S itself, so the
+* cell always fills to 1 however slowly CT entered the comparator window (at
+* CT = 10 nF the ramp needs ~280 ns to cross that 10 mV - without the hold the
+* cell froze at ~0.92, the blanking pulse came out partial and the flip-flop
+* missed toggles).  The same delay holds the discharge on for ~1.4 ns after
+* the reset, so R stays active until the cell has emptied.
+* QON sits at 0.5, not near 1, for the trapezoidal integrator: on a node this
+* stiff it rings from step to step (the cell was seen going 0.70 -> 1.02 ->
+* 0.90 on three consecutive steps), and with QON = 0.9 that 0.90 switched the
+* discharge off, dropped the hold and parked the cell - a lost cycle.  0.5
+* leaves room for that ringing.  Measured on the buck example (CT = 1 nF):
+* period 10.197 us at maxstep 200, 50 and 10 ns with Gear, 0.06 % rms
+* cycle-to-cycle; no lost cycles with trapezoidal either.  With a step far longer than all of this, there is no
+* consistent "halfway" solution of the step any more: the solver cuts the
+* step and resolves the event instead.  TLAT = 300 ps is the cell's time constant and plays the role of
+* the old latch delay: the undershoot below VCTL that it allows is what sets
+* the real ramp valley (keep it at ~300 ps; at 1 ns the valley, and the period,
+* would grow by up to 9 % at CT = 1 nF).
+Bdis  COM n_dis I = {GLAT}*(
++     max( max(0,min(1,(V(CT,COM)-{VCTH})*{KCT})),
++          V(n_bdis,COM)*(1-max(0,min(1,({VCTL}-V(CT,COM))*{KCT}))) )*(1-V(n_dis,COM))
++   - max(0,min(1,({VCTL}-V(CT,COM))*{KCT}))*V(n_dis,COM) )
+Cdis  n_dis COM {GLAT*TLAT}
+Rdisg n_dis COM 1G
+Bdsc  n_dsc COM V = max(0,min(1,(V(n_dis,COM)-{QON})*20))
 
 *==============================================================================
 * OSCILLATOR OUTPUT / SYNC  (pin 3)
