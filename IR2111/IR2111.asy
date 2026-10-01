@@ -1,0 +1,38 @@
+Version 4
+SymbolType BLOCK
+RECTANGLE Normal -64 -80 64 80
+LINE Normal -96 -32 -64 -32
+LINE Normal -96 0 -64 0
+LINE Normal -96 32 -64 32
+LINE Normal 96 -48 64 -48
+LINE Normal 96 -16 64 -16
+LINE Normal 96 16 64 16
+LINE Normal 96 48 64 48
+WINDOW 0 0 -96 Bottom 2
+WINDOW 3 0 96 Top 2
+SYMATTR Value IR2111
+SYMATTR Prefix X
+SYMATTR SpiceModel IR2111
+SYMATTR ModelFile IR2111.lib
+SYMATTR Description IR2111 half-bridge driver, single input, internal dead time - behavioral model (IR PD-6.028C)
+PIN -96 -32 LEFT 8
+PINATTR PinName VCC
+PINATTR SpiceOrder 1
+PIN -96 0 LEFT 8
+PINATTR PinName IN
+PINATTR SpiceOrder 2
+PIN -96 32 LEFT 8
+PINATTR PinName COM
+PINATTR SpiceOrder 3
+PIN 96 -48 RIGHT 8
+PINATTR PinName VB
+PINATTR SpiceOrder 7
+PIN 96 -16 RIGHT 8
+PINATTR PinName HO
+PINATTR SpiceOrder 6
+PIN 96 16 RIGHT 8
+PINATTR PinName VS
+PINATTR SpiceOrder 5
+PIN 96 48 RIGHT 8
+PINATTR PinName LO
+PINATTR SpiceOrder 4

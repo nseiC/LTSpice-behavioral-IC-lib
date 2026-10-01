@@ -1,0 +1,69 @@
+* IR2110 - meia-ponte em malha aberta: partida do bootstrap e UVLO do lado alto
+*
+*   48 V --[M1]--+--[RL: 220 uH + 4 ohm]--+ 24 V (ponto medio dos
+*                |                          capacitores do barramento)
+*               [M2]
+*                |
+*               GND
+*
+* PWM fixo de 50 % a 50 kHz, HIN e LIN complementares com ~300 ns de tempo
+* morto (gerador RC, o IR2110 nao tem tempo morto proprio).
+*
+* Na partida o capacitor de bootstrap (Cbs = 100 nF) esta descarregado e o
+* PWM comeca em alto: o lado alto esta em UVLO e o primeiro pulso de HIN
+* (0 a 10 us) NAO sai em HO.  O primeiro pulso de LO poe o no de comutacao
+* em 0 V e carrega Cbs por Dbs; VBS passa de 8,6 V (VBSUV+) e o lado alto e
+* liberado - mas HO so comeca na PROXIMA borda de subida de HIN (20 us).  Depois, cada pulso de HO tira de Cbs a carga do gate de M1:
+* a ondulacao de VBS e ~Qg/Cbs.
+*
+* Rode e olhe: v(vb,sw), v(ho,sw), v(lo), v(sw), i(L1)
+
+.include ../IR2110.lib
+
+Vbus vbus 0 48
+Cb1  vbus mid 100u
+Cb2  mid  0   100u
+Rb1  vbus mid 10k
+Rb2  mid  0   10k
+Vcc  vcc 0 15
+Vdd  vdd 0 5
+
+* --- IR2110 + bootstrap ----------------------------------------------------
+X1 lo 0 vcc sw vb ho vdd hin 0 lin 0 IR2110
+Dbs  vcc vb DBOOT
+Cbs  vb  sw 100n
+
+* --- meia-ponte e carga ----------------------------------------------------
+Rg1 ho g1 10
+Rg2 lo g2 10
+X_M1 vbus g1 sw NMOS100
+X_M2 sw   g2 0  NMOS100
+L1   sw nl 220u
+Rl   nl mid 4
+
+* --- PWM de 50 % e tempo morto ---------------------------------------------
+* o PWM comeca em ALTO: o primeiro pulso de HIN chega com Cbs descarregado
+Vpwm pwm 0 PULSE(5 0 10u 20n 20n 9.98u 20u)
+Rdt  pwm ndt 1k
+Cdt  ndt 0 430p
+Bhin hin 0 V = 5*(V(pwm)/5)*(0.5+0.5*tanh((V(ndt)-2.5)/50m))
+Blin lin 0 V = 5*(1-V(pwm)/5)*(0.5-0.5*tanh((V(ndt)-2.5)/50m))
+
+* --- modelos (os mesmos do exemplo 04) --------------------------------------
+.subckt NMOS100 D G S
+Rg  G gi 1.5
+M1  di gi S S NCH100 L=1u W=1u
+Rd  D di 12m
+Cgs gi S 1.4n
+Cgd gi D 150p
+Cds D S 300p
+Dbd S D DBD100
+.model NCH100 NMOS(LEVEL=1 VTO=3 KP=30 LAMBDA=0.01)
+.model DBD100 D(IS=1e-12 N=1.2 RS=10m CJO=0.3n)
+.ends
+.model DBOOT D(IS=1n N=1.7 RS=0.1 CJO=10p)
+
+.options method=gear
+.ic V(mid)=24
+.tran 20n 400u 0 20n uic
+.end

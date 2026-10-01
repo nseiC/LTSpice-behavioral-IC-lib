@@ -1,0 +1,78 @@
+* IR2110 test 05 - output drive
+*  IO+ (VO = 0, input high) and IO- (VO = 15 V, input low), PW <= 10 us:
+*  2.5 A typ, 2.0 A min at VBIAS = 15 V; Figures 26B/27B at 10 and 20 V.
+*  VOH = VBIAS - VO <= 1.2 V and VOL <= 0.1 V at IO = 0.
+.include ir2110_ng.lib
+.param VB=15
+Vcc vcc 0 {VB}
+Vdd vdd 0 5
+Vbs vb vs {VB}
+Vs  vs 0 0
+Vh  hh 0 PWL(0 0 1u 0 1.01u 5)
+* HO shorted to VS through an ammeter, input high -> source current
+Vsh ho vs 0
+X1 lo 0 vcc vs vb ho vdd hh 0 0 0 IR2110
+* LO forced to VBIAS through an ammeter, input low -> sink current
+Vfl lo2 0 {VB}
+X2 lo2 0 vcc vs2 vb2 ho2 vdd 0 0 0 0 IR2110
+Vb2 vb2 vs2 {VB}
+Vs2 vs2 0 0
+* open outputs for VOH / VOL (X3 high, X4 low)
+X3 lo3 0 vcc vs3 vb3 ho3 vdd hh 0 hh 0 IR2110
+Vb3 vb3 vs3 {VB}
+Vs3 vs3 0 0
+X4 lo4 0 vcc vs4 vb4 ho4 vdd 0 0 0 0 IR2110
+Vb4 vb4 vs4 {VB}
+Vs4 vs4 0 0
+.control
+set noaskquit
+echo "--- test 05: output drive ---"
+tran 5n 4u 0 10n
+meas tran iop FIND i(Vsh) AT=3u
+meas tran iom FIND i(Vfl) AT=3u
+let iop = abs(iop)
+let iom = abs(iom)
+let dh3 = v(vb3)-v(ho3)
+let dl3 = v(vcc)-v(lo3)
+let dh4 = v(ho4)-v(vs4)
+meas tran voh FIND dh3 AT=3u
+meas tran vohl FIND dl3 AT=3u
+meas tran vol FIND dh4 AT=3u
+meas tran voll FIND v(lo4) AT=3u
+if (iop > 2.0) & (abs(iop/2.5-1) < 0.03) & (iom > 2.0) & (abs(iom/2.5-1) < 0.03)
+  echo "PASS 05a VBIAS 15 V: IO+ = $&iop A, IO- = $&iom A (2.5 typ, 2.0 min)"
+else
+  echo "FAIL 05a IO+ $&iop IO- $&iom"
+end
+if (voh < 1.2) & (vohl < 1.2) & (vol < 0.1) & (voll < 0.1)
+  echo "PASS 05b VOH drop HO $&voh V / LO $&vohl V (<= 1.2), VOL HO $&vol V / LO $&voll V (<= 0.1)"
+else
+  echo "FAIL 05b $&voh $&vohl $&vol $&voll"
+end
+alterparam VB = 10
+reset
+tran 5n 4u 0 10n
+meas tran iop FIND i(Vsh) AT=3u
+meas tran iom FIND i(Vfl) AT=3u
+let iop = abs(iop)
+let iom = abs(iom)
+if (abs(iop/1.5-1) < 0.06) & (abs(iom/1.4-1) < 0.06)
+  echo "PASS 05c VBIAS 10 V: IO+ = $&iop A, IO- = $&iom A (Fig. 26B/27B: ~1.5 / ~1.4 A)"
+else
+  echo "FAIL 05c $&iop $&iom"
+end
+alterparam VB = 20
+reset
+tran 5n 4u 0 10n
+meas tran iop FIND i(Vsh) AT=3u
+meas tran iom FIND i(Vfl) AT=3u
+let iop = abs(iop)
+let iom = abs(iom)
+if (abs(iop/3.6-1) < 0.06) & (abs(iom/3.6-1) < 0.06)
+  echo "PASS 05d VBIAS 20 V: IO+ = $&iop A, IO- = $&iom A (Fig. 26B/27B: ~3.6 A)"
+else
+  echo "FAIL 05d $&iop $&iom"
+end
+quit
+.endc
+.end

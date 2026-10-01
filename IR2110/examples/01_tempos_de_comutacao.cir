@@ -1,0 +1,37 @@
+* IR2110 - tempos de comutacao (circuito de teste da Figura 3)
+*
+* VCC = VBS = VDD = 15 V, CL = 1 nF em HO e em LO, VS = 0 e VS = 400 V.
+* HIN = LIN = SD-low recebem o mesmo pulso de 0..15 V.
+*
+* Tipicos do datasheet (25 C): ton 120 ns, toff 94 ns, tr 25 ns, tf 17 ns,
+* MT (diferenca HO x LO) <= 10 ns.  Os tempos do HO com o lado alto a
+* 400 V sao os mesmos: o canal flutuante e referido a VS.
+*
+* Mude VDD para 5 V e veja ton/toff subirem para ~145 ns (Figuras 7C e 8C),
+* ou ponha KD=1.3 KE=1.8 no X1 para ver a coluna MAX.
+*
+* Rode e olhe: v(in), v(ho,vs), v(lo)
+
+.include ../IR2110.lib
+
+.param VDDP=15
+Vcc vcc 0 15
+Vdd vdd 0 {VDDP}
+Vin in 0 PULSE(0 {VDDP} 1u 10n 10n 2u 5u)
+
+* lado alto em VS = 0
+Vbs vb vs 15
+Vs  vs 0 0
+X1 lo 0 vcc vs vb ho vdd in 0 in 0 IR2110
+Ch ho vs 1n
+Cl lo 0 1n
+
+* o mesmo, com o lado alto flutuando a 400 V
+Vbs2 vb2 vs2 15
+Vs2  vs2 0 400
+X2 lo2 0 vcc vs2 vb2 ho2 vdd in 0 in 0 IR2110
+Ch2 ho2 vs2 1n
+Cl2 lo2 0 1n
+
+.tran 0.1n 4u 0 0.5n
+.end

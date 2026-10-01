@@ -1,0 +1,51 @@
+* IR2111 test 02 - function (Figure 1), dead time (Figure 5)
+*  IN high -> HO on, LO off; IN low -> LO on, HO off; never both on.
+*  DT = 700 ns typ between one output starting to fall (90 %) and the other
+*  starting to rise (10 %), on both edges.  A 300 ns input pulse (shorter
+*  than the dead time) never turns HO on.
+.include ir2111_ng.lib
+Vcc vcc 0 15
+Vbs vb vs 15
+Vs  vs 0 0
+Vin in 0 PWL(0 0 2u 0 2.01u 15 6u 15 6.01u 0 10u 0 10.01u 15 10.3u 15 10.31u 0)
+X1 vcc in 0 lo vs ho vb IR2111
+Ch ho vs 1n
+Cl lo 0 1n
+.control
+set noaskquit
+echo "--- test 02: logic and dead time ---"
+tran 1n 14u 0 2n
+let vh = v(ho)-v(vs)
+meas tran h1 FIND vh AT=4u
+meas tran l1 FIND v(lo) AT=4u
+meas tran h0 FIND vh AT=8u
+meas tran l0 FIND v(lo) AT=8u
+if (h1 > 14.9) & (l1 < 0.1) & (h0 < 0.1) & (l0 > 14.9)
+  echo "PASS 02a IN high: HO on / LO off; IN low: LO on / HO off"
+else
+  echo "FAIL 02a $&h1 $&l1 $&h0 $&l0"
+end
+let both = min(vh, v(lo))
+meas tran bmax MAX both from=0.5u to=14u
+if bmax < 1.5
+  echo "PASS 02b HO and LO never on together (min(HO,LO) peaks at $&bmax V)"
+else
+  echo "FAIL 02b overlap $&bmax"
+end
+meas tran dt1 TRIG v(lo) VAL=13.5 FALL=1 TARG vh VAL=1.5 RISE=1
+meas tran dt2 TRIG vh VAL=13.5 FALL=1 TARG v(lo) VAL=1.5 RISE=1
+if (abs(dt1/700n-1) < 0.02) & (abs(dt2/700n-1) < 0.02)
+  echo "PASS 02c dead time LO->HO $&dt1 s, HO->LO $&dt2 s (700 ns typ, 900 max)"
+else
+  echo "FAIL 02c $&dt1 $&dt2"
+end
+meas tran hmax MAX vh from=10u to=14u
+meas tran lmin MIN v(lo) from=10u to=14u
+if (hmax < 0.1) & (lmin < 0.1)
+  echo "PASS 02d 300 ns pulse swallowed by the dead time: HO stays off, LO blinks off ($&lmin V)"
+else
+  echo "FAIL 02d $&hmax $&lmin"
+end
+quit
+.endc
+.end
