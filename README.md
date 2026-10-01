@@ -89,26 +89,52 @@ depender do passo de tempo**.
 
 O LTspice não roda no ambiente de verificação deste repositório, então
 `tools/fra/fra_ngspice.py` emula o `.fra` no ngspice (mesmo método:
-injeção de Middlebrook, um tom por vez, número inteiro de ciclos, DFT) e roda
-cada malha três vezes: nominal, com o **dobro da amplitude** e com **metade
-do passo**. O modelo é considerado robusto se as três rodadas concordam
-(≤ 1 dB / 5° onde |T| < 20 dB).
+injeção de Middlebrook, um tom por vez, número inteiro de ciclos, DFT com
+janela de Hann) e roda cada malha três vezes: nominal, com o **dobro da
+amplitude** e com **metade do passo**. O modelo é considerado robusto se as
+três rodadas concordam dentro do maior entre **1 dB / 5°** e 3σ do ruído
+medido ao lado do tom, em todo ponto com SNR ≥ 20 dB (ver
+[`tools/fra/README.md`](tools/fra/README.md)).
 
 ```
+python3 tools/fra/fra_ngspice.py tools/fra/configs/*.py     # todas (horas)
 python3 tools/fra/fra_ngspice.py tools/fra/configs/74hc86_pll.py
-python3 tools/fra/fra_ngspice.py tools/fra/configs/ir2110_buck.py
-python3 tools/fra/fra_ngspice.py tools/fra/configs/ir2111_buck.py
 ```
 
-| Malha | Situação |
-|---|---|
-| 74HC86 — PLL com detector de fase XOR | **passa**: desvio ≤ 0,23 dB / 0,7°, e bate com o ganho de malha teórico (≤ 0,22 dB); cruzamento 1,9 kHz, MF 54° |
-| SG3524 — buck (e boost, inversor, push-pull) | **em investigação**: a primeira rodada mostrou picos de até 8 V na saída do exemplo. A causa é a chave ideal do estágio de potência com integração trapezoidal, não o modelo, e os exemplos passaram a usar `.options method=gear`. Mesmo assim o buck ainda não passa no critério |
-| IR2110 — buck síncrono 48 V → 12 V, 100 kHz | **passa**: desvio ≤ 0,73 dB / 2,2°, e bate com o ganho de malha médio (≤ 0,50 dB); cruzamento 7,6 kHz, MF 65° |
-| IR2111 — buck síncrono 48 V → 12 V, 50 kHz, uma entrada | **passa**: desvio ≤ 0,18 dB / 1,0°, e bate com o ganho de malha médio (≤ 0,42 dB); cruzamento 4,1 kHz, MF 58° |
-| DAC0800 | não se aplica (não fica dentro de uma malha nos exemplos; `.ac` funciona) |
-| UC3854 — malha de corrente do PFC | pendente |
-| L6599A — LLC 12 V / 150 W | pendente |
+| Malha | Cruzamento | MF | Pior desvio (2× amplitude / passo/2) | Situação |
+|---|---|---|---|---|
+| 74HC86 — PLL com detector de fase XOR | 1,88 kHz | 53° | 0,26 dB / 1,1°; bate com o ganho de malha teórico (≤ 0,06 dB) | **passa** |
+| SG3524 — buck 20 → 5 V / 1 A | 4,76 kHz | 65° | 0,8 dB / 3,8° de 2 kHz para cima (2,4 dB a 1 kHz, onde \|T\| = 18 dB e o ruído admite 3,2 dB) | **passa** |
+| SG3524 — boost 12 → 24 V / 1 A | 1,16 kHz | 55° | 0,16 dB / 1,2° | **passa** |
+| SG3524 — buck-boost inversor 12 → −12 V / 1 A | 1,18 kHz | 46° | 0,10 dB / 1,4° | **passa** |
+| SG3524 — push-pull 24 → 5 V / 2 A | 2,73 kHz | 61° | 0,43 dB / 2,1° | **passa** |
+| UC3854 — malha de corrente do PFC de 250 W | 17,5 kHz | 45° | 0,34 dB / 2,2° | **passa** |
+| L6599A — LLC 12 V da AN3233, a 100 W | — | — | — | **não medida**: a 150 W o exemplo trabalha em cima do limiar de sobrecorrente e não há malha de tensão para medir (ver o README do L6599A); a medida a 100 W foi interrompida |
+| IR2110 — buck síncrono 48 → 12 V, 100 kHz | 7,68 kHz | 65° | 0,18 dB / 1,6°; bate com o ganho de malha médio (≤ 0,48 dB) | **passa** |
+| IR2111 — buck síncrono 48 → 12 V, 50 kHz, uma entrada | 4,14 kHz | 58° | 0,18 dB / 1,0°; bate com o ganho de malha médio (≤ 0,42 dB) | **passa** (versão anterior da ferramenta) |
+| DAC0800 | — | — | — | não se aplica (não fica dentro de uma malha nos exemplos; `.ac` funciona) |
+
+O que precisou mudar para chegar aqui (detalhes no README de cada CI):
+
+* **SG3524:** o latch de descarga do oscilador foi refeito como célula
+  integradora sem realimentação positiva instantânea. O latch regenerativo
+  antigo podia ficar no ponto de equilíbrio instável com passos longos do
+  integrador implícito: pulsos perdidos ou 1,7 µs mais curtos em alguns
+  passos e não em outros. Os exemplos foram recompensados (boost e inversor
+  a 1 A, longe da fronteira CCM/DCM; push-pull com chaves externas e
+  transformador de 1 mH).
+* **L6599A:** a célula de direção do oscilador passou a se manter por uma
+  cópia atrasada (2 ns) do próprio estado. Com a realimentação instantânea, o
+  ngspice perdia o passo bem no meio da comutação dessa célula, durante o
+  soft-start, e o exemplo do LLC abortava com passo máximo de 10, 20 ou
+  25 ns. Com a correção, 10 e 25 ns rodam até 4 ms (o trecho onde
+  abortava) e os 49 testes do datasheet passam; os exemplos completos e o
+  FRA ainda não foram re-rodados com ela.
+* **Exemplos de conversor:** `.options method=gear` (ver a dica abaixo).
+
+As medidas do SG3524 foram feitas antes do último ajuste do oscilador
+(`GDIS` 72 m → 74,3 m, tempo morto 0,516 → 0,50 µs); os exemplos foram
+re-rodados com o ajuste e passam, o FRA não.
 
 Dica que vale para qualquer esquemático com chave ideal (`S`) no LTspice ou
 no ngspice: se o FRA sair ruidoso, veja primeiro se o nó de comutação não
@@ -205,20 +231,49 @@ time step**.
 
 LTspice does not run in this repository's verification environment, so
 `tools/fra/fra_ngspice.py` emulates `.fra` in ngspice (same method:
-Middlebrook injection, one tone at a time, whole cycles, DFT) and runs every
-loop three times — nominal, **twice the injection amplitude**, **half the
-time step**. A model passes when the three agree (≤ 1 dB / 5° where
-|T| < 20 dB).
+Middlebrook injection, one tone at a time, whole cycles, Hann-windowed DFT)
+and runs every loop three times — nominal, **twice the injection
+amplitude**, **half the time step**. A model passes when the three agree
+within the larger of **1 dB / 5°** and 3σ of the noise measured next to the
+tone, at every point with SNR ≥ 20 dB (see
+[`tools/fra/README.md`](tools/fra/README.md)).
 
-| Loop | Status |
-|---|---|
-| 74HC86 — XOR phase-detector PLL | **passes**: ≤ 0.23 dB / 0.7°, and matches the textbook loop gain within 0.22 dB; crossover 1.9 kHz, PM 54° |
-| SG3524 — buck (and boost, inverting, push-pull) | **under investigation**: the first run showed output spikes up to 8 V in the example. The cause was the ideal switch with trapezoidal integration, not the model, and the examples now use `.options method=gear`. The buck still does not meet the criterion |
-| IR2110 — 48 V → 12 V synchronous buck, 100 kHz | **passes**: ≤ 0.73 dB / 2.2°, and matches the averaged loop gain within 0.50 dB; crossover 7.6 kHz, PM 65° |
-| IR2111 — 48 V → 12 V synchronous buck, 50 kHz, single input | **passes**: ≤ 0.18 dB / 1.0°, and matches the averaged loop gain within 0.42 dB; crossover 4.1 kHz, PM 58° |
-| DAC0800 | not applicable (not inside a loop in the examples; `.ac` works) |
-| UC3854 — PFC current loop | pending |
-| L6599A — 12 V / 150 W LLC | pending |
+| Loop | Crossover | PM | Worst deviation (2× amplitude / half step) | Status |
+|---|---|---|---|---|
+| 74HC86 — XOR phase-detector PLL | 1.88 kHz | 53° | 0.26 dB / 1.1°; matches the textbook loop gain (≤ 0.06 dB) | **passes** |
+| SG3524 — buck 20 → 5 V / 1 A | 4.76 kHz | 65° | 0.8 dB / 3.8° from 2 kHz up (2.4 dB at 1 kHz, where \|T\| = 18 dB and the noise allows 3.2 dB) | **passes** |
+| SG3524 — boost 12 → 24 V / 1 A | 1.16 kHz | 55° | 0.16 dB / 1.2° | **passes** |
+| SG3524 — inverting buck-boost 12 → −12 V / 1 A | 1.18 kHz | 46° | 0.10 dB / 1.4° | **passes** |
+| SG3524 — push-pull 24 → 5 V / 2 A | 2.73 kHz | 61° | 0.43 dB / 2.1° | **passes** |
+| UC3854 — 250 W PFC current loop | 17.5 kHz | 45° | 0.34 dB / 2.2° | **passes** |
+| L6599A — AN3233 12 V LLC, at 100 W | — | — | — | **not measured**: at 150 W the example runs right on the over-current threshold and there is no voltage loop to measure (see the L6599A README); the 100 W run was stopped |
+| IR2110 — 48 → 12 V synchronous buck, 100 kHz | 7.68 kHz | 65° | 0.18 dB / 1.6°; matches the averaged loop gain (≤ 0.48 dB) | **passes** |
+| IR2111 — 48 → 12 V synchronous buck, 50 kHz, single input | 4.14 kHz | 58° | 0.18 dB / 1.0°; matches the averaged loop gain (≤ 0.42 dB) | **passes** (earlier version of the tool) |
+| DAC0800 | — | — | — | not applicable (not inside a loop in the examples; `.ac` works) |
+
+What had to change to get here (details in each IC's README):
+
+* **SG3524:** the oscillator's discharge latch was rebuilt as an integrating
+  cell with no instantaneous positive feedback. The old regenerative latch
+  could be left at its unstable equilibrium by an implicit integrator taking
+  long steps: lost or 1.7 µs-short pulses at some step sizes and not others.
+  The examples were recompensated (boost and inverter at 1 A, away from the
+  CCM/DCM boundary; push-pull with external switches and a 1 mH
+  transformer).
+* **L6599A:** the oscillator's direction cell now holds itself through a
+  2 ns-delayed copy of its own state. With the instantaneous feedback,
+  ngspice lost the time step right in the middle of that cell's transition
+  during the soft-start, and the LLC example aborted with a 10, 20 or 25 ns
+  maximum step. With the fix, 10 and 25 ns run through 4 ms (past where it
+  aborted) and the 49 datasheet tests pass; the full examples and the FRA
+  have not been re-run with it yet.
+* **Converter examples:** `.options method=gear` (see the tip in the
+  Portuguese section: an ideal switch with the trapezoidal integrator makes
+  the switch node ring numerically and inject spurious inductor current).
+
+The SG3524 loops were measured before the oscillator's last trim (`GDIS`
+72 m → 74.3 m, dead time 0.516 → 0.50 µs); the examples were re-run with
+it and pass, the FRA was not.
 
 ### Licence
 

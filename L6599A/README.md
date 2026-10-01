@@ -61,6 +61,15 @@ its state at any step size. The step size is really set by the power stage:
 the half-bridge transitions and the ZVS commutation of the resonant current
 need it.
 
+A smaller step is fine too. It was not, until recently: the AN3233 example
+(02) aborted with `timestep too small` during the soft-start (~1.4 ms) with a
+10, 20 or 25 ns maximum step, while 30 and 40 ns ran. The step collapsed
+inside the oscillator's direction cell, which held itself through an
+instantaneous positive-feedback loop just as it crossed halfway; it now holds
+through a 2 ns-delayed copy of its state (see *Notes*), and the 10 and 25 ns
+runs go through 4 ms. The full examples have not yet been re-run with that
+change; the 49 datasheet tests pass.
+
 ## Pinout
 
 | # | Name | Function |
@@ -222,7 +231,7 @@ cd examples && ./run_examples.sh 01_malha_aberta.cir
 | Exemplo | O que e | Resultado |
 |---|---|---|
 | `01_malha_aberta.cir` | condicoes do datasheet (470 pF / 12k), soft-start e "opto" puxando 0→400 µA do RFMIN | f<sub>start</sub> 166 kHz, f<sub>min</sub> 60 kHz, f<sub>max</sub> ~190 kHz; tempo morto 0,28 µs; duty 50 % |
-| `02_llc_150w_an3233.cir` | **o LLC de 12 V / 150 W da AN3233** (EVL150W-ADP-SR), 400 V, plena carga, partida do zero | frequencia de ~330 kHz ate ~105–110 kHz (f<sub>r</sub> = 107 kHz), 12 V em ~55 ms, ZVS nas duas chaves, ISEN ~0,7 V |
+| `02_llc_150w_an3233.cir` | **o LLC de 12 V / 150 W da AN3233** (EVL150W-ADP-SR), 400 V, plena carga, partida do zero | frequencia de ~330 kHz ate ~105–110 kHz (f<sub>r</sub> = 107 kHz), 12 V em ~55 ms, ZVS nas duas chaves; **ISEN chega ao limiar de OCP** (ver abaixo) |
 | `03_burst_carga_leve.cir` | o mesmo com 3 W de carga | modo burst: STBY cruza 1,24/1,29 V, pacotes a cada ~7 ms, PFC_STOP baixo nas pausas, P<sub>in</sub> 3,5 W |
 | `04_sobrecarga_hiccup.cir` | o mesmo, carga vai a 0,3 Ω em 70 ms | OCP → Css descarregado → DELAY a 3,5 V → para → reparte em ~26 ms (Eq. 10) → hiccup |
 | `05_fonte_completa_pfc_llc.cir` | **fonte completa**: PFC UC3854 (U-134) + este LLC, 115 VCA → 400 V → 12 V / 150 W | 404 V, 12,11 V / 152 W, **FP 0,985**, P<sub>in</sub> 167 W, rendimento total 91 % (AN3233: 91–94 %) |
@@ -301,6 +310,18 @@ ngspice.
   (corrigido: agora sao resistivos nos dois sentidos). Os exemplos usam
   MOSFETs como condutancia suave e `.options method=gear`.
 
+* **A 150 W o exemplo 02 trabalha em cima do limiar de OCP.** Numa
+  simulacao de 150 ms, de 60 ms em diante o ISEN oscila entre 0,63 e 0,80 V
+  (V<sub>ISX</sub> = 0,8 V): a cada poucos milissegundos o OCP dispara,
+  descarrega um pouco o C<sub>SS</sub> (que fica em 1,64–1,78 V em vez dos
+  2 V do RFMIN) e sobe a frequencia. Quem segura a saida (11,9–12,4 V) e esse
+  mecanismo, nao a malha de tensao: a saida do TSM1014 fica perto do trilho e
+  o LED do opto U3 fica praticamente apagado (0 a 0,13 mA). A placa da
+  AN3233 nao trabalha assim a 150 W; o mais provavel e que a diferenca venha
+  das simplificacoes do estagio de potencia (transformador ideal, diodos no
+  lugar dos SR), mas isso nao foi investigado. O teste do exemplo so olha o
+  ultimo 1 ms e por isso passa.
+
 ### Simplificacoes dos exemplos
 
 Vcc de fonte ideal (15 V); barramento de 400 V ideal nos exemplos 02–04;
@@ -310,6 +331,18 @@ carga, mais que um SR real); transformador ideal sem perdas no nucleo e no
 cobre, por isso o rendimento simulado (~98 %) e maior que os 94 % medidos na
 AN; TSM1014 como amp-op de um polo; opto como fonte de corrente. A rede
 R16/D16/C6 do pino CF da placa ficou de fora.
+
+## LTspice .FRA (loop gain)
+
+**Not measured yet.** The natural loop to measure is the voltage loop of
+example 02, injecting in series between the +12 V output and the TSM1014
+feedback (the R49 divider and the R43 opto-LED branch both hang off the
+output: in LTspice, put the FRA component between `out` and a new node that
+feeds R43 and R49; `tools/fra/configs/l6599a_llc.py` does the same in
+ngspice). At 150 W there is no voltage loop to measure — the example sits on
+the OCP threshold, see above — so the configuration measures at 100 W
+(R<sub>load</sub> = 1.44 Ω). That run takes several hours in ngspice and was
+stopped before it finished.
 
 ## What is *not* modelled
 
@@ -329,6 +362,19 @@ Read this before trusting a result.
   modelled**, only its result (150 Ω + 0.6 V while LVG is on).
 * **There is no `.op` while the oscillator runs.** For `.op` / `.ac` of the
   surrounding circuit, disable the IC (e.g. LINE below 1.24 V).
+
+## Notes
+
+* **The oscillator's direction cell holds through a delayed copy of its
+  state.** Every state bit of the model is an integrating set/reset cell
+  that holds itself through its own snapped state. Those hold terms also
+  balance at a third, unstable point (5/9 of the way), and while the cell is
+  crossing halfway they form an instantaneous positive-feedback loop. For
+  the rarely switching cells that is harmless; the direction cell crosses it
+  twice per switching period, and in the LLC example ngspice lost the time
+  step right there (step cut from 0.6 ns to 2.5 ps and on down to 10⁻¹⁹ s).
+  It now holds through n_dq delayed by a 2 ns RC, so there is no
+  instantaneous loop left to resolve.
 
 ## Licence
 

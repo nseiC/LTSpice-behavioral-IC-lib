@@ -287,10 +287,14 @@ component in series between the output and the top of the divider.
 
 | Example | Crossover | Phase margin | Worst deviation (2× amplitude / dt/2) | Verdict |
 |---|---|---|---|---|
-| buck 20 → 5 V / 1 A | 4.76 kHz | 65° | 0.8 dB / 3° above 2 kHz | pass |
+| buck 20 → 5 V / 1 A | 4.76 kHz | 65° | 0.8 dB / 3.8° from 2 kHz up (2.4 dB at 1 kHz, where \|T\| = 18 dB and the noise allows 3.2 dB) | pass |
 | boost 12 → 24 V / 1 A | 1.16 kHz | 55° | 0.16 dB / 1.2° | pass |
 | inverting buck-boost 12 → −12 V / 1 A | 1.18 kHz | 46° | 0.10 dB / 1.4° | pass |
 | push-pull 24 → 5 V / 2 A | 2.73 kHz | 61° | 0.43 dB / 2.1° | pass |
+
+These were measured before the oscillator's last trim (`GDIS` 72 m → 74.3 m,
+which moved the dead time from 0.516 to 0.50 µs). The examples were re-run
+with the trim and pass; the FRA was not re-run.
 
 ![FRA, buck](docs/fra_buck.png)
 
