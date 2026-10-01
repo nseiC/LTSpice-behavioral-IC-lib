@@ -13,7 +13,8 @@
 ## Português
 
 Biblioteca de **modelos SPICE comportamentais** de controladores de fontes
-chaveadas e de CIs lógicos, para **LTspice** (e ngspice).
+chaveadas, drivers de gate, conversores D/A e CIs lógicos, para **LTspice**
+(e ngspice).
 
 Este repositório é destinado a apoiar o **kit educacional de LTspice**
 desenvolvido pela **Universidade Tecnológica Federal do Paraná (UTFPR) –
@@ -40,6 +41,9 @@ especificações que importam no projeto.
 | [**UC3854**](UC3854/) | PFC boost por corrente média | 57 verificações (datasheet 6/98) | malha aberta; PFC de 250 W da U-134 em 120 V e 230 V (FP 0,995 / 0,980) |
 | [**L6599A**](L6599A/) (L6599AD / L6599AN) | controlador ressonante LLC meia-ponte | 49 verificações (datasheet Rev 7) | LLC 12 V / 150 W da AN3233 (ZVS, burst, hiccup); fonte completa UC3854 + L6599A, 115 VCA → 12 V, FP 0,985 |
 | [**74HC86**](74HC86/) | 4 portas XOR de 2 entradas, CMOS HC | 30 verificações (ON Semi 74HC86/D Rev. 1), no limite garantido a 25 °C | tabela verdade, inversor controlado, detector de fase, dobrador de frequência, paridade, oscilador em anel, PLL |
+| [**IR2110**](IR2110/) (IR2113) | driver de meia-ponte, lados alto e baixo independentes | 26 verificações (IR PD60147 rev.V), valores típicos e curvas de V<sub>DD</sub> / V<sub>BIAS</sub> | tempos de comutação, shutdown ciclo a ciclo, partida do bootstrap, buck síncrono 48 V → 12 V em malha fechada |
+| [**IR2111**](IR2111/) | driver de meia-ponte de uma entrada, tempo morto interno | 22 verificações (IR PD-6.028C), valores típicos | tempo morto, meia-ponte com carga indutiva, buck síncrono 48 V → 12 V em malha fechada |
+| [**DAC0800**](DAC0800/) (DAC0802) | DAC multiplicador de 8 bits, saídas em corrente complementares | 34 verificações (TI SNAS538C), Tabelas 1–3 | Tabelas 1, 2 e 3, rampa em escada, gerador de senoide, multiplicador / atenuador digital |
 
 Cada pasta tem o próprio README com a pinagem, como cada bloco foi modelado,
 a tabela de verificação, os resultados dos exemplos e o que **não** foi
@@ -63,8 +67,12 @@ cd SG3524/tests && ./run_tests.sh
 cd UC3854/tests && ./run_tests.sh
 cd L6599A/tests && ./run_tests.sh
 cd 74HC86/tests && ./run_tests.sh
+cd IR2110/tests && ./run_tests.sh
+cd IR2111/tests && ./run_tests.sh
+cd DAC0800/tests && ./run_tests.sh
 cd L6599A/examples && ./run_examples.sh 01_malha_aberta.cir
 cd 74HC86/examples && ./run_examples.sh
+cd DAC0800/examples && ./run_examples.sh
 ```
 
 Os exemplos de conversores completos levam de alguns minutos (SG3524) a ~1 h
@@ -88,19 +96,28 @@ do passo**. O modelo é considerado robusto se as três rodadas concordam
 
 ```
 python3 tools/fra/fra_ngspice.py tools/fra/configs/74hc86_pll.py
+python3 tools/fra/fra_ngspice.py tools/fra/configs/ir2110_buck.py
+python3 tools/fra/fra_ngspice.py tools/fra/configs/ir2111_buck.py
 ```
 
 | Malha | Situação |
 |---|---|
 | 74HC86 — PLL com detector de fase XOR | **passa**: desvio ≤ 0,23 dB / 0,7°, e bate com o ganho de malha teórico (≤ 0,22 dB); cruzamento 1,9 kHz, MF 54° |
 | SG3524 — buck (e boost, inversor, push-pull) | **em investigação**: a primeira rodada mostrou picos de até 8 V na saída do exemplo. A causa é a chave ideal do estágio de potência com integração trapezoidal, não o modelo, e os exemplos passaram a usar `.options method=gear`. Mesmo assim o buck ainda não passa no critério |
+| IR2110 — buck síncrono 48 V → 12 V, 100 kHz | **passa**: desvio ≤ 0,73 dB / 2,2°, e bate com o ganho de malha médio (≤ 0,50 dB); cruzamento 7,6 kHz, MF 65° |
+| IR2111 — buck síncrono 48 V → 12 V, 50 kHz, uma entrada | **passa**: desvio ≤ 0,18 dB / 1,0°, e bate com o ganho de malha médio (≤ 0,42 dB); cruzamento 4,1 kHz, MF 58° |
+| DAC0800 | não se aplica (não fica dentro de uma malha nos exemplos; `.ac` funciona) |
 | UC3854 — malha de corrente do PFC | pendente |
 | L6599A — LLC 12 V / 150 W | pendente |
 
 Dica que vale para qualquer esquemático com chave ideal (`S`) no LTspice ou
 no ngspice: se o FRA sair ruidoso, veja primeiro se o nó de comutação não
 está "tocando" numericamente na abertura da chave. `method=gear`, ou uma
-chave com transição suave, resolve.
+chave com transição suave, resolve. Com os drivers de gate (IR2110, IR2111)
+no ngspice, mais duas: diodo de bootstrap sem tempo de trânsito (`TT`) e
+MOSFET em subcircuito (nível 1 + capacitâncias) em vez de `VDMOS` — os dois
+causavam "timestep too small" raros em simulações longas (ver o README do
+IR2110).
 
 ### Licença
 
@@ -112,7 +129,8 @@ envolva segurança.
 ## English
 
 A library of **behavioural SPICE models** of switch-mode power supply
-controllers and logic ICs, for **LTspice** (and ngspice).
+controllers, gate drivers, D/A converters and logic ICs, for **LTspice**
+(and ngspice).
 
 This repository is intended to support the **LTspice educational kit**
 developed at the **Federal University of Technology – Paraná (UTFPR),
@@ -139,6 +157,9 @@ that matter when you design around the part.
 | [**UC3854**](UC3854/) | average-current-mode boost PFC | 57 checks (datasheet 6/98) | open loop; U-134 250 W PFC at 120 V and 230 V (PF 0.995 / 0.980) |
 | [**L6599A**](L6599A/) (L6599AD / L6599AN) | resonant LLC half-bridge controller | 49 checks (datasheet Rev 7) | AN3233 12 V / 150 W LLC (ZVS, burst, hiccup); complete UC3854 + L6599A supply, 115 VAC → 12 V, PF 0.985 |
 | [**74HC86**](74HC86/) | quad 2-input XOR gate, HC CMOS | 30 checks (ON Semi 74HC86/D Rev. 1), at the 25 °C guaranteed limit | truth table, controlled inverter, phase detector, frequency doubler, parity, ring oscillator, PLL |
+| [**IR2110**](IR2110/) (IR2113) | half-bridge driver, independent high and low side | 26 checks (IR PD60147 rev.V), typical values and V<sub>DD</sub> / V<sub>BIAS</sub> curves | switching times, cycle-by-cycle shutdown, bootstrap start-up, closed-loop 48 V → 12 V synchronous buck |
+| [**IR2111**](IR2111/) | single-input half-bridge driver, internal dead time | 22 checks (IR PD-6.028C), typical values | dead time, half-bridge with inductive load, closed-loop 48 V → 12 V synchronous buck |
+| [**DAC0800**](DAC0800/) (DAC0802) | 8-bit multiplying DAC, complementary current outputs | 34 checks (TI SNAS538C), Tables 1–3 | Tables 1, 2 and 3, staircase ramp, sine generator, multiplier / digital attenuator |
 
 Each folder has its own README with the pinout, how each block is modelled,
 the verification table, the example results and what is **not** modelled.
@@ -162,8 +183,12 @@ cd SG3524/tests && ./run_tests.sh
 cd UC3854/tests && ./run_tests.sh
 cd L6599A/tests && ./run_tests.sh
 cd 74HC86/tests && ./run_tests.sh
+cd IR2110/tests && ./run_tests.sh
+cd IR2111/tests && ./run_tests.sh
+cd DAC0800/tests && ./run_tests.sh
 cd L6599A/examples && ./run_examples.sh 01_malha_aberta.cir
 cd 74HC86/examples && ./run_examples.sh
+cd DAC0800/examples && ./run_examples.sh
 ```
 
 The complete-converter examples take from a few minutes (SG3524) to about an
@@ -189,6 +214,9 @@ time step**. A model passes when the three agree (≤ 1 dB / 5° where
 |---|---|
 | 74HC86 — XOR phase-detector PLL | **passes**: ≤ 0.23 dB / 0.7°, and matches the textbook loop gain within 0.22 dB; crossover 1.9 kHz, PM 54° |
 | SG3524 — buck (and boost, inverting, push-pull) | **under investigation**: the first run showed output spikes up to 8 V in the example. The cause was the ideal switch with trapezoidal integration, not the model, and the examples now use `.options method=gear`. The buck still does not meet the criterion |
+| IR2110 — 48 V → 12 V synchronous buck, 100 kHz | **passes**: ≤ 0.73 dB / 2.2°, and matches the averaged loop gain within 0.50 dB; crossover 7.6 kHz, PM 65° |
+| IR2111 — 48 V → 12 V synchronous buck, 50 kHz, single input | **passes**: ≤ 0.18 dB / 1.0°, and matches the averaged loop gain within 0.42 dB; crossover 4.1 kHz, PM 58° |
+| DAC0800 | not applicable (not inside a loop in the examples; `.ac` works) |
 | UC3854 — PFC current loop | pending |
 | L6599A — 12 V / 150 W LLC | pending |
 
