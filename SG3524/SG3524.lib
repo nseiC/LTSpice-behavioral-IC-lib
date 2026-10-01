@@ -119,8 +119,8 @@
 * is worth matching your actual part.  Select it by overriding VCTH:
 *
 *   X1 ... SG3524                        <- Philips, t = RT*CT
-*   X1 ... SG3524 VCTH=3.65 GDIS=69m     <- ST,  f = 1.18/(RT*CT)
-*   X1 ... SG3524 VCTH=3.37 GDIS=67m     <- TI,  f = 1.30/(RT*CT)
+*   X1 ... SG3524 VCTH=3.65 GDIS=71m     <- ST,  f = 1.18/(RT*CT)
+*   X1 ... SG3524 VCTH=3.37 GDIS=69m     <- TI,  f = 1.30/(RT*CT)
 *
 * GDIS goes with VCTH because the dead time is (CT/GDIS)*ln((VCTH-VCTMIN)/
 * (VCTL-VCTMIN)); trimming it keeps the blanking pulse at the 0.5 us that all
@@ -128,9 +128,9 @@
 *
 * Measured, RT = 10 kohm, CT = 10 nF:
 *
-*   Philips  expected 10.00 kHz, model 9.94 kHz   (-0.6 %)
-*   ST       expected 11.80 kHz, model 11.71 kHz  (-0.7 %)
-*   TI       expected 13.00 kHz, model 12.88 kHz  (-0.9 %)
+*   Philips  expected 10.00 kHz, model 9.92 kHz   (-0.8 %)
+*   ST       expected 11.80 kHz, model 11.69 kHz  (-0.9 %)
+*   TI       expected 13.00 kHz, model 12.86 kHz  (-1.1 %)
 *
 * Everything else in this model is identical across all three datasheets:
 * reference, error amplifier (gm = 2 mA/V into 5 Mohm, 200 Hz pole, 1.8-3.4 V
@@ -144,7 +144,7 @@
 .SUBCKT SG3524 INV NI OSC CLP CLM RT CT COM COMP SD EA CA CB EB VIN VREF
 + VREFNOM=5.0 VDROP=1.7 GREF=1 IREFSC=105m ICC=8m
 + VENL=3.6 VENW=0.8
-+ VRT=3.6 VCTL=0.6 VCTH=4.2 GDIS=72m VCTMIN=0.5 GLAT=1m TLAT=300p QON=0.5
++ VRT=3.6 VCTL=0.6 VCTH=4.2 GDIS=74.3m VCTMIN=0.5 GLAT=1m TLAT=300p QON=0.5
 + VOSCH=3.5 GOSC=0.1 IOSCMX=3m ROSC=2k COSC=10p VSYNC=2.5
 + VCMIN=1.0 VCMAX=3.5 DMAX=0.90 VPWM0=0.50
 + GMEA=2m IEAMAX=200u VOS=2m IBIAS=2u REAO=5Meg CEAO=100p
@@ -213,7 +213,9 @@ Vs_rt n_rt RT  0
 *
 * tau = CT/GDIS, so the dead time still scales linearly with CT:
 *   t_dead = (CT/GDIS) * ln((VCTH-VCTMIN)/(VCTL-VCTMIN)) = CT/GDIS * 3.61
-* GDIS = 72 mS puts that at 0.5 us for CT = 0.01 uF, the datasheet's number.
+* GDIS = 74.3 mS puts the blanking pulse at 0.500 us for CT = 0.01 uF, the
+* datasheet's number (the formula gives 0.486 us; the rest is the ~1.4 ns
+* discharge-onset delay of the latch below, at each end, plus the edges).
 *
 * The discharge switches on through its own short delay (n_bdis: a 2 ns RC
 * after the blanking command n_blkx - our latch or an external sync pulse -

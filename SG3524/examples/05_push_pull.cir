@@ -43,13 +43,18 @@ Veb eb gb 0
 Rgb gb 0 1k
 Sa  pa 0 ga 0 PSW
 Sb  pb 0 gb 0 PSW
-* transformador com tomada central no primario (metade B invertida)
-Lpa vin pa 100u
-Lpb pb vin 100u
-Ls  ns1 ns2 25u
-K1 Lpa Lpb 0.995
-K2 Lpa Ls 0.995
-K3 Lpb Ls 0.995
+* transformador com tomada central no primario (metade B invertida), n = 0,5.
+* 1 mH por metade do primario: a corrente magnetizante fica em ~0,14 A de
+* pico.  Com 100 uH (versao anterior) eram 1,4 A - mais que a propria corrente
+* de carga refletida - e essa energia tocava nos snubbers a cada abertura de
+* chave: o ganho do estagio de potencia caia 20 dB a 1 kHz e dependia do
+* passo do solver (11 graus entre 100 e 50 ns), e o FRA nao fechava.
+Lpa vin pa 1m
+Lpb pb vin 1m
+Ls  ns1 ns2 250u
+K1 Lpa Lpb 0.999
+K2 Lpa Ls 0.999
+K3 Lpb Ls 0.999
 Rmag vin 0 1e7
 * snubbers nos drenos
 Rsa pa nsa 47

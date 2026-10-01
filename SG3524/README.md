@@ -141,16 +141,16 @@ f in kHz):
 
 | Vendor | Quoted formula | Swing | Override | Model vs formula |
 |---|---|---|---|---|
-| Philips 1994 | `t = RT·CT` | 3.60 V | *(default)* | −0.6 % |
-| ST 2000 | `f = 1.18/(RT·CT)` | 3.05 V | `VCTH=3.65 GDIS=69m` | −0.7 % |
-| TI 2003 | `f = 1.30/(RT·CT)` | 2.77 V | `VCTH=3.37 GDIS=67m` | −0.8 % |
+| Philips 1994 | `t = RT·CT` | 3.60 V | *(default)* | −0.8 % |
+| ST 2000 | `f = 1.18/(RT·CT)` | 3.05 V | `VCTH=3.65 GDIS=71m` | −0.9 % |
+| TI 2003 | `f = 1.30/(RT·CT)` | 2.77 V | `VCTH=3.37 GDIS=69m` | −1.1 % |
 
 ```
-X1 … SG3524 VCTH=3.37 GDIS=67m      ; TI part
+X1 … SG3524 VCTH=3.37 GDIS=69m      ; TI part
 ```
 
 `GDIS` rides along with `VCTH` to hold the blanking pulse at the 0.5 µs that
-all three specify for C<sub>T</sub> = 0.01 µF; measured 0.504 / 0.498 / 0.500 µs.
+all three specify for C<sub>T</sub> = 0.01 µF; measured 0.501 / 0.501 / 0.501 µs.
 Leaving it out costs 5 % on the dead time and nothing else.
 
 **Everything else is identical across the three datasheets** — reference,
