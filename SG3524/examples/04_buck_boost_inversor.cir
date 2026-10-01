@@ -1,4 +1,4 @@
-* SG3524 - BUCK-BOOST inversor 12 V -> -12 V, 50 kHz, malha fechada
+* SG3524 - BUCK-BOOST inversor 12 V -> -12 V / 1 A, 50 kHz, malha fechada
 *
 * Detalhe que pega muita gente: com saida NEGATIVA o somador de
 * realimentacao tem que entrar pelo pino 2 (NI), nao pelo pino 1 (INV).
@@ -19,8 +19,8 @@ Rb vout ni 57.6k
 Cff vout ni 4.7n
 Rr1 vref inv 10k
 Rr2 inv 0 10k
-Rcz comp ncz 1.5k
-Ccz ncz 0 470n
+Rcz comp ncz 1k
+Ccz ncz 0 1u
 Cp  comp 0 10n
 Rdrv ndrv 0 1k
 X1 inv ni osc clp clm rt ct 0 comp sd ndrv vin vin ndrv vin vref SG3524
@@ -37,7 +37,7 @@ Resr ncc 0 40m
 * para -180 graus logo acima de 370 Hz (mesma rede do exemplo do boost)
 Rdmp vout nd 1.0
 Cdmp nd 0 1000u IC=0
-Rload vout 0 24
+Rload vout 0 12
 Vclp clp 0 0
 Vclm clm 0 0
 .model PSW SW(Ron=0.1 Roff=1Meg Vt=5 Vh=1)

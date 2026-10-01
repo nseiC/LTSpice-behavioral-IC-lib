@@ -53,5 +53,10 @@ Rload vout 0 2.5
 * injeta corrente falsa no indutor (saltos de amperes em um passo); a malha
 * fica caotica e o FRA mede lixo.  Ver tools/fra e o README principal.
 .options method=gear
-.tran 500n 12m 0 500n uic
+* passo maximo 100 ns: o tempo morto aqui e ~60 ns (CT = 1,25 nF).  Com
+* 500 ns o solver pula o cruzamento do limiar do oscilador e o periodo sai
+* 1,6 % curto e ruidoso (12,51 us contra 12,72 us a 20 ns); com 100 ns o
+* erro cai para 0,25 %.  No push-pull isso importa: e o que faz o FRA
+* depender do passo.  (Ver "What to put on the schematic" no README.)
+.tran 100n 12m 0 100n uic
 .end

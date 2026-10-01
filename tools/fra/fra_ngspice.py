@@ -19,8 +19,8 @@ ao FRA":
 Cada tom ocupa um numero inteiro de ciclos (a injecao comeca e termina em
 zero), com ciclos de acomodacao antes da janela de medida.  A componente em
 f e extraida com janela de Hann (o ripple de chaveamento nao vaza para o
-tom).  SNR = sinal em V(out) no tom / o mesmo calculo num trecho sem
-injecao; so os pontos com SNR >= snr_min (20 dB) entram no veredito - onde
+tom).  SNR = sinal em V(out) no tom / o mesmo calculo em frequencias vizinhas
+(+-3 e +-4 bins), na mesma janela; so os pontos com SNR >= snr_min (20 dB) entram no veredito - onde
 |T| e muito alto o sinal em V(out) some no ripple, em qualquer FRA, inclusive
 no do LTspice.
 
@@ -117,8 +117,12 @@ def dft(t, v, f, ta, tb):
     where the loop gain is high."""
     k = (t >= ta) & (t <= tb)
     tt, vv = t[k], v[k]
-    win = 0.5 - 0.5 * np.cos(2 * math.pi * (tt - ta) / (tb - ta))
-    w = (vv - np.mean(vv)) * win * np.exp(-2j * math.pi * f * tt)
+    # remove a slow trend (quadratic fit) first: a loop still creeping towards
+    # its operating point leaks into the low tones through any window
+    x = (tt - ta) / (tb - ta)
+    vv = vv - np.polyval(np.polyfit(x, vv, 2), x)
+    win = 0.5 - 0.5 * np.cos(2 * math.pi * x)
+    w = vv * win * np.exp(-2j * math.pi * f * tt)
     integ = np.trapezoid if hasattr(np, "trapezoid") else np.trapz
     return 2 * integ(w, tt) / (0.5 * (tb - ta))
 
@@ -141,9 +145,12 @@ def run_variant(cfg, name, amp, maxstep, workdir):
     for f, _, ta, tb in schedule(cfg):
         X, Y = dft(t, x, f, ta, tb), dft(t, y, f, ta, tb)
         T = -Y / X
-        # noise floor: the same analysis on a quiet stretch before injection
-        L = min(tb - ta, 0.5 * t0)
-        nx = abs(dft(t, x, f, t0 - L, t0))
+        # noise floor: the same analysis at neighbouring frequencies, +-3 and
+        # +-4 bins away (outside the Hann main lobe), in the SAME window.  A
+        # quiet stretch before the injection underestimates it: a switching
+        # converter is noisier with the tone present than without it.
+        Tw = tb - ta
+        nx = np.mean([abs(dft(t, x, f + k / Tw, ta, tb)) for k in (-4, -3, 3, 4)])
         res.append((f, 20 * math.log10(abs(T)), math.degrees(np.angle(T)),
                     20 * math.log10(abs(X) / max(nx, 1e-15))))
     return name, res, ""
@@ -189,18 +196,25 @@ def main(cfgfile):
         print("FAIL  %s: transiente com injecao nao completou" % title)
         return 1
     ana = cfg.get("analytic")
-    hdr = "%10s %9s %8s %6s | %7s %6s | %7s %6s" % ("f (Hz)", "|T| dB", "fase", "SNR", "d(2A)", "dfase", "d(dt/2)", "dfase")
+    hdr = "%10s %9s %8s %6s | %7s %6s | %7s %6s | %9s" % ("f (Hz)", "|T| dB", "fase", "SNR", "d(2A)", "dfase", "d(dt/2)", "dfase", "tol dB/o")
     if ana: hdr += " | %9s %8s" % ("analit dB", "fase")
     print(hdr)
     worst_g = worst_p = 0
     judged = 0
     snr_min = cfg.get("snr_min", 20)
+    tol_g, tol_p = cfg.get("tol_db", 1.0), cfg.get("tol_deg", 5.0)
+    worst_r = 0
     for i, (f, g, p, snr) in enumerate(out["base"]):
         ga, pa = out["amp2"][i][1:3]
         gs, ps = out["step2"][i][1:3]
         dpa = (pa - p + 180) % 360 - 180
         dps = (ps - p + 180) % 360 - 180
-        line = "%10.4g %9.2f %8.1f %6.1f | %7.2f %6.1f | %7.2f %6.1f" % (f, g, p, snr, ga - g, dpa, gs - g, dps)
+        # what the noise alone allows: 3 sigma of the difference of two runs,
+        # from noise/signal = 10^(-SNR/20); never less than tol_db / tol_deg
+        e = 10 ** (-snr / 20) * math.sqrt(2)
+        ag, ap = max(tol_g, 3 * 8.686 * e), max(tol_p, 3 * 57.3 * e)
+        line = "%10.4g %9.2f %8.1f %6.1f | %7.2f %6.1f | %7.2f %6.1f | %4.1f %4.1f" % (
+            f, g, p, snr, ga - g, dpa, gs - g, dps, ag, ap)
         if ana:
             Ta = ana(f)
             line += " | %9.2f %8.1f" % (20 * math.log10(abs(Ta)), math.degrees(np.angle(Ta)))
@@ -209,15 +223,16 @@ def main(cfgfile):
             judged += 1
             worst_g = max(worst_g, abs(ga - g), abs(gs - g))
             worst_p = max(worst_p, abs(dpa), abs(dps))
+            worst_r = max(worst_r, abs(ga - g) / ag, abs(gs - g) / ag, abs(dpa) / ap, abs(dps) / ap)
     fc, pm = crossover(out["base"])
     if fc:
         print("RESULT cruzamento %.4g Hz, margem de fase %.1f graus" % (fc, pm))
     else:
         print("RESULT sem cruzamento de 0 dB na faixa medida")
-    tol_g, tol_p = cfg.get("tol_db", 1.0), cfg.get("tol_deg", 5.0)
-    ok = worst_g <= tol_g and worst_p <= tol_p and judged >= 3
-    msg = "linear (2x amplitude) e independente do passo (dt/2): pior desvio %.2f dB / %.1f graus nos %d pontos com SNR >= %g dB" % (
-        worst_g, worst_p, judged, snr_min)
+    ok = worst_r <= 1 and judged >= 3
+    msg = ("linear (2x amplitude) e independente do passo (dt/2): pior desvio %.2f dB / %.1f graus nos %d pontos "
+           "com SNR >= %g dB (%.0f %% da tolerancia, que e o maior entre %g dB / %g graus e 3 sigma do ruido)") % (
+        worst_g, worst_p, judged, snr_min, 100 * worst_r, tol_g, tol_p)
     if ana and fc:
         ga = [abs(20 * math.log10(abs(ana(r[0]))) - r[1]) for r in out["base"] if r[3] >= snr_min]
         msg += "; vs analitico ate %.2f dB" % max(ga)
