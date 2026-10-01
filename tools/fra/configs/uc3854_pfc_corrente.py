@@ -14,6 +14,5 @@ tsettle = 20e-3
 freqs = [2000, 4000, 7000, 10000, 15000, 20000, 30000]
 settle_cycles, meas_cycles = 6, 12
 amp, maxstep = 20e-3, 100e-9
-judge_db = 15
 plot = "../../../UC3854/docs/fra_malha_corrente.png"
 settle_time, meas_time = 1e-3, 3e-3

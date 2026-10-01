@@ -16,13 +16,22 @@ ao FRA":
   * o resultado NAO DEPENDE DO PASSO: com metade do passo maximo, |T| e
     fase nao mudam (um modelo cujas bordas caem na grade do passo falha).
 
-Cada tom ocupa um numero inteiro de ciclos (a injecao comeca e termina em
-zero), com ciclos de acomodacao antes da janela de medida.  A componente em
-f e extraida com janela de Hann (o ripple de chaveamento nao vaza para o
-tom).  SNR = sinal em V(out) no tom / o mesmo calculo em frequencias vizinhas
-(RMS de 3 a 8 bins de cada lado), na mesma janela; so os pontos com SNR >= snr_min (20 dB) entram no veredito - onde
-|T| e muito alto o sinal em V(out) some no ripple, em qualquer FRA, inclusive
-no do LTspice.
+Cada tom e um par de fontes SIN independentes em serie (+A a partir de t0 e
+-A a partir de t1 = t0 + N/f, que se cancelam dali em diante), entao o tom
+ocupa um numero inteiro de ciclos e a injecao comeca e termina em zero.  Ha
+um tempo de acomodacao antes da janela de medida (settle_cycles/settle_time)
+e uma janela minima (meas_cycles/meas_time).  A componente em f e extraida
+com tendencia quadratica removida e janela de Hann (o ripple de chaveamento
+nao vaza para o tom).
+
+Veredito, so nos pontos com SNR >= snr_min (20 dB), onde SNR = sinal em
+V(out) no tom / RMS da mesma analise de 3 a 8 bins de cada lado, na mesma
+janela.  Cada desvio (2x amplitude, dt/2) tem de caber na tolerancia do
+ponto: o maior entre tol_db / tol_deg (1 dB / 5 graus) e 3 sigma do que o
+ruido medido permite.  Um ponto em que o nominal fica fora mas as rodadas
+2x e dt/2 - que diferem entre si em amplitude E em passo - concordam e
+contado como excursao de ruido do nominal (uma nao linearidade isolaria a
+rodada 2x; uma dependencia do passo, a rodada dt/2).
 
     T(f) = -V(ret)/V(out)       (Vinj: out = ret + injecao)
     margem de fase = 180 + fase(T) no cruzamento |T| = 1
