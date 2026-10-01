@@ -218,10 +218,10 @@ por `examples/run_examples.sh`:
 |---|---|---|
 | `01_malha_aberta.cir` | push-pull sem malha | periodo = R<sub>T</sub>·C<sub>T</sub>, tempo morto 0,5 µs, saidas nunca sobrepostas |
 | `06_circuito_teste_datasheet.cir` | **circuito de teste da Figura 4** | 20 kHz, V<sub>REF</sub> 5 V, amp de erro em ganho unitario, V<sub>CE(sat)</sub> < 1,1 V |
-| `02_buck.cir` | buck 20 V → 5 V / 1 A | regula 5 V, aguenta degrau de carga 1 A → 2 A |
-| `03_boost.cir` | boost 12 V → 24 V | regula 24 V |
-| `04_buck_boost_inversor.cir` | buck-boost 12 V → −12 V | regula tensao negativa |
-| `05_push_pull.cir` | push-pull com transformador 24 V → 5 V / 2 A | regula 5 V, saidas alternadas em 180° |
+| `02_buck.cir` | buck 20 V → 5 V / 1 A | regula 5 V, aguenta degrau de carga 1 A → 2 A; **cruzamento 4,8 kHz, MF 65°** (FRA) |
+| `03_boost.cir` | boost 12 V → 24 V / 1 A | regula 24 V; **cruzamento 1,2 kHz, MF 55°** (FRA) |
+| `04_buck_boost_inversor.cir` | buck-boost 12 V → −12 V / 1 A | regula −12 V; **cruzamento 1,2 kHz, MF 46°** (FRA) |
+| `05_push_pull.cir` | push-pull com transformador 24 V → 5 V / 2 A, chaves externas | regula 5 V, saidas alternadas em 180°; **cruzamento 2,7 kHz, MF 61°** (FRA) |
 
 ```
 cd examples && ./run_examples.sh
@@ -246,14 +246,69 @@ O datasheet e explicito:
 > A good starting point is 50 kΩ plus 0.001 µF.”*
 
 O modelo reproduz o amplificador (g<sub>m</sub> = 2 mA/V, saida de 5 MΩ, polo,
-excursao 0,5–3,8 V, ±200 µA). As redes R-C nos exemplos sao **pontos de
-partida**, nao projetos otimizados. Dois limites reais que mordem:
+excursao 0,5–3,8 V, ±200 µA). As redes dos exemplos foram **projetadas para
+margem de fase ≥ 45° e conferidas com FRA** (ver abaixo), com tres recursos:
+
+* **R<sub>cz</sub> + C<sub>cz</sub> + C<sub>p</sub> no pino 9** (tipo II) — o
+  zero de R<sub>cz</sub>·C<sub>cz</sub> fica bem abaixo do cruzamento;
+* **C<sub>ff</sub> em paralelo com o resistor de cima do divisor** — um par
+  zero/polo que da avanco de fase em volta do cruzamento (ate ~20° com
+  divisor 2:1, ~50° com 9,6:1 no boost);
+* **C<sub>p</sub> grande o bastante** para o ripple de chaveamento que o
+  C<sub>ff</sub> deixa passar nao chegar ao pino 9: no boost, sem isso, o
+  pino 9 tinha 0,37 V p-p de ripple (15 % da faixa do PWM) e o modulador saia
+  do regime linear.
+
+Limites reais que mordem:
 
 * o pino 9 so fornece **±200 µA**, entao um capacitor grande ali limita o slew
-  (470 nF ⇒ 0,43 V/ms) e a malha entra em ciclo-limite se pedir mais que isso;
-* um filtro LC pouco amortecido chega a −180° antes do cruzamento; nos exemplos
-  de buck ha uma rede R-C amortecedora em paralelo com a saida exatamente por
-  isso.
+  (1 µF ⇒ 0,2 V/ms: o boost e o inversor levam ~15 ms para partir);
+* um filtro LC pouco amortecido chega a −180° antes do cruzamento; buck,
+  inversor e push-pull tem uma rede R-C amortecedora em paralelo com a saida
+  exatamente por isso;
+* **conversor perto da fronteira CCM/DCM** muda de ganho com a amplitude do
+  sinal. O boost e o inversor eram de 0,5 A, com o vale da corrente no
+  indutor em 0,4 A: 25 mV de injecao no FRA ja levavam o vale a zero e o
+  ganho de malha mudava 3 dB com a amplitude. Com 1 A o vale fica em ~1,4 A.
+
+## LTspice .FRA (loop gain)
+
+LTspice's `.fra` measures the loop gain in the time domain, so a model is
+"FRA-robust" only if a small injected sine produces a response that is linear
+and does not depend on the solver step. `tools/fra/` (see the top-level
+README) emulates `.fra` in ngspice and runs every loop three times — nominal,
+twice the injection amplitude, half the maximum step. The examples' feedback
+paths all go through a `Vinj`-ready divider: in LTspice, put the FRA
+component in series between the output and the top of the divider.
+
+| Example | Crossover | Phase margin | Worst deviation (2× amplitude / dt/2) | Verdict |
+|---|---|---|---|---|
+| buck 20 → 5 V / 1 A | 4.76 kHz | 65° | 0.8 dB / 3° above 2 kHz | pass |
+| boost 12 → 24 V / 1 A | 1.16 kHz | 55° | 0.16 dB / 1.2° | pass |
+| inverting buck-boost 12 → −12 V / 1 A | 1.18 kHz | 46° | 0.10 dB / 1.4° | pass |
+| push-pull 24 → 5 V / 2 A | 2.73 kHz | 61° | 0.43 dB / 2.1° | pass |
+
+![FRA, buck](docs/fra_buck.png)
+
+What it took — worth knowing for your own FRA runs on SG3524 designs:
+
+* **The oscillator's discharge latch was rebuilt** (see *Notes* below). The old
+  regenerative latch could be left at its unstable midpoint by an implicit
+  integrator taking long steps, which produced lost or 1.7 µs-short pulses at
+  some step sizes and not others. In an FRA that is noise, or a result that
+  moves with `maxstep`. The new latch has no unstable equilibrium.
+* **Use `.options method=gear` with ideal switches** (`S` elements). With the
+  trapezoidal integrator the switch node rings numerically at every turn-off
+  and injects spurious current into the inductor. The first FRA of the buck
+  example showed output spikes to 8 V that were purely numerical.
+* **Keep the PWM edge resolved.** With `maxstep` far above the dead time, the
+  PWM edges (the model's comparator and your ideal switch alike) land on the
+  solver's step grid. At 500 ns on a 50 kHz boost the on-time wandered ±0.1 µs
+  from cycle to cycle. The examples use 100–200 ns.
+* **Mind the operating point.** A converter near the CCM/DCM boundary changes
+  gain with the injection amplitude, and so does a push-pull whose
+  transformer has a small magnetizing inductance. Both were in the old
+  examples and are fixed now.
 
 ## What is *not* modelled
 

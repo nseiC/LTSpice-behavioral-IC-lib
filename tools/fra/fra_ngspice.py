@@ -109,10 +109,9 @@ def make_deck(cfg, amp, maxstep, tag, workdir):
     body = body[:m.start()] + "\n".join(src) + body[m.end():]
     tstop = seg[-1][3]
     raw = os.path.join(workdir, tag + ".raw")
+    vecs = " ".join(["v(%s)" % n for n in (cfg["out"], cfg["ret"])] + cfg.get("save_extra", []))
     deck = body + "\n.tran %g %.9g 0 %g %s\n.control\nsave %s\nrun\nwrite %s %s\nquit\n.endc\n.end\n" % (
-        maxstep, tstop, maxstep, cfg.get("uic", ""), " ".join(
-            "v(%s)" % n for n in (cfg["out"], cfg["ret"])), raw,
-        " ".join("v(%s)" % n for n in (cfg["out"], cfg["ret"])))
+        maxstep, tstop, maxstep, cfg.get("uic", ""), vecs, raw, vecs)
     path = os.path.join(workdir, tag + ".cir")
     open(path, "w").write(deck)
     return path, raw

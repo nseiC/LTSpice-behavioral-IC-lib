@@ -297,6 +297,38 @@ tensao tal que o ripple de 120 Hz em VA Out fique em ~1,5 %. O modelo tem a
 rampa, o ganho, o GBW e a saida so-fonte com 8 k dos amplificadores, entao os
 mesmos calculos valem nele.
 
+## LTspice .FRA (loop gain)
+
+The current loop of the U-134 250 W PFC (`02_pfc_250w_u134.cir`) was measured
+with `tools/fra/` (an ngspice emulation of LTspice's `.fra`, see the
+top-level README): Middlebrook injection in series between the shunt (low
+impedance) and R<sub>mo</sub> (3.9 k), the path by which the current signal
+reaches the current amplifier. Each tone is run three times — nominal, twice
+the injection amplitude, half the maximum step:
+
+| f (Hz) | \|T\| (dB) | phase | SNR (dB) | Δ 2× amplitude | Δ dt/2 |
+|---:|---:|---:|---:|---:|---:|
+| 7 k | 11.5 | −152° | 19 | 0.10 dB / 2.6° | 0.05 dB / 0.8° |
+| 10 k | 7.5 | −142° | 26 | 0.32 dB / 1.1° | 0.34 dB / 0.8° |
+| 15 k | 1.6 | −135° | 26 | 0.11 dB / 0.7° | 0.19 dB / 2.2° |
+| 20 k | −1.5 | −135° | 30 | 0.01 dB / 1.5° | 0.00 dB / 1.5° |
+| 30 k | −5.8 | −135° | 35 | 0.02 dB / 0.0° | 0.11 dB / 1.0° |
+
+**Crossover 17.5 kHz, phase margin 45°**, linear and step-independent within
+0.34 dB / 2.2°. Below ~5 kHz the loop gain is so high that the signal left at
+the injection point drowns in the switching ripple (SNR < 20 dB), as it would
+in any FRA. A PFC's current-loop gain also changes along the line cycle; the
+FRA reports the average over the measurement window, exactly as LTspice's
+would.
+
+![FRA, malha de corrente](docs/fra_malha_corrente.png)
+
+The examples now use `.options method=gear`. With the trapezoidal integrator
+the ideal switch's turn-off made the switch node ring numerically and inject
+spurious inductor current (seen on the SG3524 buck: output spikes to 8 V that
+were purely numerical). The PFC results are unchanged by it: PF 0.995 / 0.980,
+THD 3.9 % / 4.8 %.
+
 ## What is *not* modelled
 
 Read this before trusting a result.

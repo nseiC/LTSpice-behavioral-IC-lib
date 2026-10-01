@@ -216,24 +216,24 @@ Result for the PLL:
 
 | f (Hz) | \|T\| (dB) | phase | Δ 2× amplitude | Δ dt/2 | analytic \|T\| / phase |
 |---:|---:|---:|---:|---:|---:|
-| 300 | 27.40 | −144.4° | 0.03 dB / 0.3° | 0.23 dB / 0.7° | 27.35 / −143.9° |
-| 500 | 19.28 | −147.3° | 0.01 dB / 0.1° | 0.08 dB / 0.4° | 19.28 / −146.7° |
-| 800 | 11.84 | −143.5° | 0.02 dB / 0.0° | 0.11 dB / 0.1° | 11.89 / −143.4° |
-| 1200 | 5.88 | −136.6° | 0.02 dB / 0.0° | 0.01 dB / 0.0° | 5.90 / −136.6° |
-| 1800 | 0.48 | −127.1° | 0.00 dB / 0.3° | 0.02 dB / 0.1° | 0.51 / −127.5° |
-| 2500 | −3.41 | −119.8° | 0.00 dB / 0.2° | 0.02 dB / 0.5° | −3.36 / −120.0° |
-| 4000 | −8.49 | −110.3° | 0.01 dB / 0.3° | 0.01 dB / 0.7° | −8.27 / −110.9° |
-| 6000 | −12.30 | −105.5° | 0.02 dB / 0.1° | 0.18 dB / 0.2° | −12.14 / −105.4° |
+| 300 | 27.34 | −143.8° | 0.01 dB / 0.2° | 0.26 dB / 0.4° | 27.35 / −143.9° |
+| 500 | 19.22 | −146.9° | 0.03 dB / 0.0° | 0.07 dB / 0.6° | 19.28 / −146.7° |
+| 800 | 11.83 | −143.5° | 0.03 dB / 0.0° | 0.03 dB / 0.0° | 11.89 / −143.4° |
+| 1200 | 5.87 | −136.6° | 0.02 dB / 0.0° | 0.06 dB / 0.0° | 5.90 / −136.6° |
+| 1800 | 0.48 | −127.6° | 0.00 dB / 0.0° | 0.00 dB / 0.0° | 0.51 / −127.5° |
+| 2500 | −3.36 | −120.2° | 0.04 dB / 0.1° | 0.04 dB / 0.0° | −3.36 / −120.0° |
+| 4000 | −8.24 | −110.8° | 0.10 dB / 0.0° | 0.19 dB / 1.1° | −8.27 / −110.9° |
+| 6000 | −12.08 | −105.9° | 0.11 dB / 0.4° | 0.20 dB / 0.0° | −12.14 / −105.4° |
 
-**Crossover 1.88 kHz, phase margin 54°.** Doubling the injection or halving
-the step moves the result by at most 0.23 dB / 0.7°, and it matches the
+**Crossover 1.88 kHz, phase margin 53°.** Doubling the injection or halving
+the step moves the result by at most 0.26 dB / 1.1°, and it matches the
 textbook small-signal loop gain T(s) = K<sub>d</sub>·K<sub>v</sub>/s·F(s)
 (K<sub>d</sub> = V<sub>CC</sub>/π, K<sub>v</sub> = 2π·10 kHz/V, lag-lead
-filter) within 0.22 dB — the model's XOR averages exactly like an ideal phase
-detector, with no dead zone around the lock point.
+filter) within 0.06 dB at every frequency — the model's XOR averages exactly
+like an ideal phase detector, with no dead zone around the lock point.
 
 ```
-python3 tools/fra/fra_ngspice.py tools/fra/configs/74hc86_pll.py   # ~15 min
+python3 tools/fra/fra_ngspice.py tools/fra/configs/74hc86_pll.py   # ~20 min
 ```
 
 ![FRA do PLL](docs/fra_pll.png)
