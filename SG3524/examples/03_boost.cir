@@ -51,5 +51,9 @@ Vclm clm 0 0
 * injeta corrente falsa no indutor (saltos de amperes em um passo); a malha
 * fica caotica e o FRA mede lixo.  Ver tools/fra e o README principal.
 .options method=gear
-.tran 500n 15m 0 500n uic
+* passo maximo 100 ns ~ o tempo morto (CT = 2 nF).  Com 500 ns a borda do PWM
+* fica quantizada no passo do solver (on-time variando +-0,1 us de ciclo a
+* ciclo, 1 %) e o pico da rampa de CT sai 45 mV baixo; isso e ruido num FRA.
+* 20 ms: com Ccz = 1 uF e +-200 uA no pino 9 a partida leva ~15 ms.
+.tran 100n 20m 0 100n uic
 .end
