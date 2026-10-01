@@ -54,8 +54,11 @@ def schedule(cfg):
     t = cfg["tsettle"]
     seg = []
     for f in cfg["freqs"]:
+        # settle_time / meas_time: a floor in seconds, so that a high tone still
+        # waits out the loop's slow modes (each tone starts abruptly and kicks
+        # them) and averages over enough of the switching noise
         ns = max(cfg.get("settle_cycles", 4), math.ceil(f * cfg.get("settle_time", 0)))
-        nm = cfg.get("meas_cycles", 10)
+        nm = max(cfg.get("meas_cycles", 10), math.ceil(f * cfg.get("meas_time", 0)))
         seg.append((f, t, t + ns / f, t + (ns + nm) / f))
         t += (ns + nm) / f
     return seg
@@ -76,18 +79,25 @@ def make_deck(cfg, amp, maxstep, tag, workdir):
             continue
         lines.append(l)
     seg = schedule(cfg)
-    terms = []
-    for f, t0, _, t1 in seg:
-        terms.append("sin(%.9g*(time-%.9g))*u(time-%.9g)*u(%.9g-time)"
-                     % (2 * math.pi * f, t0, t0, t1))
     inj = cfg["inj"]
     pat = re.compile(r"^\s*%s\s+(\S+)\s+(\S+)\s+.*$" % re.escape(inj), re.I | re.M)
     body = "\n".join(lines)
     m = pat.search(body)
     if not m:
         sys.exit("fonte de injecao %s nao encontrada" % inj)
-    body = body[:m.start()] + "B%s %s %s V = %.6g*(%s)" % (
-        inj, m.group(1), m.group(2), amp, " + ".join(terms)) + body[m.end():]
+    # Each tone is a pair of ordinary SIN sources in series: +A starting at t0
+    # and -A starting at t1 = t0 + (whole cycles)/f.  From t1 on they are the
+    # same sine with opposite sign and cancel, so the tone exists only in
+    # [t0, t1].  Independent sources, like the injection source of LTspice's
+    # FRA - a single behavioural source with time() and step functions made
+    # ngspice lose the source equation (an LLC run aborted on it).
+    nodes = [m.group(2)] + ["%s_%d" % (inj.lower(), k) for k in range(1, 2 * len(seg))] + [m.group(1)]
+    src = []
+    for k, (f, t0, _, t1) in enumerate(seg):
+        for j, (a_, td) in enumerate(((amp, t0), (-amp, t1))):
+            n = 2 * k + j
+            src.append("%s_%d %s %s SIN(0 %.6g %.9g %.9g)" % (inj, n, nodes[n + 1], nodes[n], a_, f, td))
+    body = body[:m.start()] + "\n".join(src) + body[m.end():]
     tstop = seg[-1][3]
     raw = os.path.join(workdir, tag + ".raw")
     deck = body + "\n.tran %g %.9g 0 %g %s\n.control\nsave %s\nrun\nwrite %s %s\nquit\n.endc\n.end\n" % (

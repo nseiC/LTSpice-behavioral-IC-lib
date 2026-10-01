@@ -28,13 +28,15 @@ Ct  ct 0 1n
 
 * --- realimentacao 5 V -> 2.5 V e soft-start -------------------------------
 Rfb1 vout inv 10k
+* Cff: avanco de fase no divisor (zero em 4,8 kHz, polo em 9,6 kHz)
+Cff  vout inv 3.3n
 Rfb2 inv  0   10k
 Rd1  vref ni 5k
 Rd2  ni   0  5k
 Css  ni   0  470n IC=0
 
 * --- compensacao no pino 9 -------------------------------------------------
-Rcz  comp ncz 10k
+Rcz  comp ncz 680
 Ccz  ncz  0   470n
 Cp   comp 0   220p
 

@@ -15,11 +15,13 @@ Ct ct 0 2n
 * duty cai.  Ra=10k de VREF, Rb=56k de VOUT, equilibrio com NI = INV = 2.5 V.
 Ra vref ni 10k
 Rb vout ni 57.6k
+* Cff: avanco de fase no somador (zero em 590 Hz, polo em 4 kHz)
+Cff vout ni 4.7n
 Rr1 vref inv 10k
 Rr2 inv 0 10k
-Rcz comp ncz 4.7k
-Ccz ncz 0 220n
-Cp  comp 0 220p
+Rcz comp ncz 1.5k
+Ccz ncz 0 470n
+Cp  comp 0 10n
 Rdrv ndrv 0 1k
 X1 inv ni osc clp clm rt ct 0 comp sd ndrv vin vin ndrv vin vref SG3524
 * estagio buck-boost (inversor): chave high-side, indutor para o terra
@@ -31,6 +33,10 @@ Csn nsn 0 22n
 Cnsw nsw 0 470p
 Cout vout ncc 470u IC=0
 Resr ncc 0 40m
+* amortecedor R-C: sem ele o LC de saida tem Q ~ 12 e a fase despenca
+* para -180 graus logo acima de 370 Hz (mesma rede do exemplo do boost)
+Rdmp vout nd 1.0
+Cdmp nd 0 1000u IC=0
 Rload vout 0 24
 Vclp clp 0 0
 Vclm clm 0 0

@@ -11,3 +11,4 @@ freqs = [1000, 2000, 3000, 5000, 8000, 12000, 16000]
 settle_cycles, meas_cycles = 6, 12
 amp, maxstep = 20e-3, 500e-9
 plot = "../../../SG3524/docs/fra_pushpull.png"
+settle_time, meas_time = 3e-3, 2e-3

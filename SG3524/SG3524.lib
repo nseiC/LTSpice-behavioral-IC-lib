@@ -144,7 +144,7 @@
 .SUBCKT SG3524 INV NI OSC CLP CLM RT CT COM COMP SD EA CA CB EB VIN VREF
 + VREFNOM=5.0 VDROP=1.7 GREF=1 IREFSC=105m ICC=8m
 + VENL=3.6 VENW=0.8
-+ VRT=3.6 VCTL=0.6 VCTH=4.2 GDIS=72m VCTMIN=0.5
++ VRT=3.6 VCTL=0.6 VCTH=4.2 GDIS=72m VCTMIN=0.5 VSETH=1.5 VRSTH=0.5
 + VOSCH=3.5 GOSC=0.1 IOSCMX=3m ROSC=2k COSC=10p VSYNC=2.5
 + VCMIN=1.0 VCMAX=3.5 DMAX=0.90 VPWM0=0.50
 + GMEA=2m IEAMAX=200u VOS=2m IBIAS=2u REAO=5Meg CEAO=100p
@@ -229,10 +229,26 @@ Rct   CT COM 1000Meg
 * once this model drives a real converter - at CT = 1 nF the ramp discharges at
 * 72 V/us, so a 0.1 mV window would have to be resolved in about a picosecond.
 * KLOG = 10 still gives the latch a loop gain of 10, so it latches properly.
+*
+* HYSTERESIS ON BOTH THRESHOLDS (VSETH, VRSTH).  The latch must not depend on
+* its own positive feedback to finish a transition.  At CT = 1 nF the discharge
+* it starts pulls CT back below VCTH in under a nanosecond - before the latch
+* has settled - and the set input disappears.  The latch is then left at its
+* unstable midpoint (n_dsc = 5/9), and an implicit integrator taking steps much
+* longer than the 30 ps regeneration time (Gear/BDF, or backward Euler) holds
+* it there as if it were stable.  It sat there for 8 ns and fell back to 0:
+* a runt discharge to 3.1 V, a lost output pulse, a 13.4 us period in a
+* 10.2 us oscillator - three times in 3 ms at maxstep 50 ns, never at 200 ns
+* or 10 ns.  That step-size dependence is noise in a loop-gain (FRA) run.
+* Lowering the set threshold by VSETH*n_dsc as the latch moves (and raising
+* the reset threshold by VRSTH*(1-n_dsc)) makes the input itself drive every
+* transition to the end, Schmitt-trigger style.  With the latch at rest
+* (n_dsc = 0 or 1) the thresholds are exactly VCTH and VCTL, so the timing is
+* unchanged.
 Bdsc  n_dsc COM V = max(0,min(1,(V(n_dis,COM)-0.5)*{KLOG}))
 Bdis  n_disx COM V =
-+     V(n_dsc,COM)     * max(0,min(1,(V(CT,COM)-{VCTL})*{KCT}))
-+   + (1-V(n_dsc,COM)) * max(0,min(1,(V(CT,COM)-{VCTH})*{KCT}))
++     V(n_dsc,COM)     * max(0,min(1,(V(CT,COM)-{VCTL}-{VRSTH}*(1-V(n_dsc,COM)))*{KCT}))
++   + (1-V(n_dsc,COM)) * max(0,min(1,(V(CT,COM)-{VCTH}+{VSETH}*V(n_dsc,COM))*{KCT}))
 * 300 ps, not 1 ns: the latch delay lets CT keep discharging after the reset
 * threshold is crossed, and that undershoot (IDIS * t_latch / CT) is what sets
 * the real ramp valley.  At 1 ns it is 33 mV with CT = 10 nF but 330 mV with

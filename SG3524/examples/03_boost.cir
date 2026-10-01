@@ -16,13 +16,15 @@ Rt rt 0 10k
 Ct ct 0 2n
 * realimentacao: 24V -> 2.5V
 Rfb1 vout inv 86k
+* Cff: avanco de fase no divisor (zero em 390 Hz, polo em 3,8 kHz)
+Cff  vout inv 4.7n
 Rfb2 inv 0 10k
 Rd1 vref ni 5k
 Rd2 ni 0 5k
 Css ni 0 470n IC=0
-Rcz comp ncz 4.7k
-Ccz ncz 0 100n
-Cp  comp 0 220p
+Rcz comp ncz 1.5k
+Ccz ncz 0 470n
+Cp  comp 0 10n
 * saidas em paralelo, seguidor de emissor aciona a chave low-side
 Rdrv ndrv 0 1k
 X1 inv ni osc clp clm rt ct 0 comp sd ndrv vin vin ndrv vin vref SG3524
