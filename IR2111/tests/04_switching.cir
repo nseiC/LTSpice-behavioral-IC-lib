@@ -1,0 +1,72 @@
+* IR2111 test 04 - switching times (Figure 3 test circuit, CL = 1 nF)
+*  VCC = VBS = 15 V: ton 850 / toff 150 / tr 80 / tf 40 ns typ, delay
+*  matching HS/LS, and KD = 1.2 / KE = 1.6 against the max column
+*  (1000 / 180 / 130 / 65 ns, DT 900 ns).  ton grows with the load.
+.include ir2111_ng.lib
+.param KDP=1 KEP=1 CLD=1n
+Vcc vcc 0 15
+Vbs vb vs 15
+Vs  vs 0 0
+Vin in 0 PULSE(0 15 2u 10n 10n 4u 10u)
+X1 vcc in 0 lo vs ho vb IR2111 KD={KDP} KE={KEP}
+Ch ho vs {CLD}
+Cl lo 0 {CLD}
+.control
+set noaskquit
+echo "--- test 04: switching times ---"
+define chk(x, t, tol) abs(x/t-1) < tol
+tran 0.2n 9u 0 1n
+let vh = v(ho)-v(vs)
+meas tran ton TRIG v(in) VAL=7.5 RISE=1 TARG vh VAL=1.5 RISE=1
+meas tran tr  TRIG vh VAL=1.5 RISE=1 TARG vh VAL=13.5 RISE=1
+meas tran toff TRIG v(in) VAL=7.5 FALL=1 TARG vh VAL=13.5 FALL=1
+meas tran tf  TRIG vh VAL=13.5 FALL=1 TARG vh VAL=1.5 FALL=1
+meas tran tonl TRIG v(in) VAL=7.5 FALL=1 TARG v(lo) VAL=1.5 RISE=1
+meas tran toffl TRIG v(in) VAL=7.5 RISE=1 TARG v(lo) VAL=13.5 FALL=1
+meas tran trl TRIG v(lo) VAL=1.5 RISE=1 TARG v(lo) VAL=13.5 RISE=1
+meas tran tfl TRIG v(lo) VAL=13.5 FALL=1 TARG v(lo) VAL=1.5 FALL=1
+if chk(ton,850n,0.01) & chk(toff,150n,0.02) & chk(tr,80n,0.02) & chk(tf,40n,0.02)
+  echo "PASS 04a HO: ton $&ton  toff $&toff  tr $&tr  tf $&tf  (850/150/80/40 ns typ)"
+else
+  echo "FAIL 04a HO: $&ton $&toff $&tr $&tf"
+end
+if chk(tonl,850n,0.01) & chk(toffl,150n,0.02) & chk(trl,80n,0.02) & chk(tfl,40n,0.02)
+  echo "PASS 04b LO: ton $&tonl  toff $&toffl  tr $&trl  tf $&tfl"
+else
+  echo "FAIL 04b LO: $&tonl $&toffl $&trl $&tfl"
+end
+let mt = max(abs(ton-tonl), abs(toff-toffl))
+if mt < 30n
+  echo "PASS 04c delay matching HS/LS: $&mt s (MT 30 ns typ)"
+else
+  echo "FAIL 04c MT $&mt"
+end
+alterparam KDP = 1.2
+alterparam KEP = 1.6
+reset
+tran 0.2n 9u 0 1n
+let vh = v(ho)-v(vs)
+meas tran ton TRIG v(in) VAL=7.5 RISE=1 TARG vh VAL=1.5 RISE=1
+meas tran toff TRIG v(in) VAL=7.5 FALL=1 TARG vh VAL=13.5 FALL=1
+meas tran dt TRIG v(lo) VAL=13.5 FALL=1 TARG vh VAL=1.5 RISE=1
+if chk(ton,1000n,0.03) & chk(toff,180n,0.05) & chk(dt,830n,0.05)
+  echo "PASS 04d KD=1.2 KE=1.6: ton $&ton toff $&toff DT $&dt (max 1000 / 180 / 900 ns)"
+else
+  echo "FAIL 04d $&ton $&toff $&dt"
+end
+alterparam KDP = 1
+alterparam KEP = 1
+alterparam CLD = 3.3n
+reset
+tran 0.2n 9u 0 1n
+let vh = v(ho)-v(vs)
+meas tran ton TRIG v(in) VAL=7.5 RISE=1 TARG vh VAL=1.5 RISE=1
+meas tran tr  TRIG vh VAL=1.5 RISE=1 TARG vh VAL=13.5 RISE=1
+if (ton > 860n) & (tr > 2.5*80n)
+  echo "PASS 04e 3.3 nF load: ton $&ton tr $&tr (grow with the load)"
+else
+  echo "FAIL 04e $&ton $&tr"
+end
+quit
+.endc
+.end

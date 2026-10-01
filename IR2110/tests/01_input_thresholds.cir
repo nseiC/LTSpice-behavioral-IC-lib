@@ -1,0 +1,91 @@
+* IR2110 test 01 - logic input thresholds and bias currents
+*  VIH <= 9.5 V, VIL >= 6.0 V at VDD = 15 V (table); Figures 12B/13B at
+*  VDD = 5 V (VIH <= 3.2 V, VIL >= 2.0 V) and 3.3 V (logic compatible)
+*  IIN+ <= 40 uA (20 typ) at VIN = VDD, IIN- <= 1 uA at VIN = 0
+.include ir2110_ng.lib
+.param VD=15
+Vcc vcc 0 15
+Vdd vdd 0 {VD}
+Vbs vb vs 15
+Vs  vs 0 0
+* slow triangle on all three inputs paths: HIN and LIN, SD held low
+Vh  hin 0 PWL(0 0 100u {VD} 200u 0)
+Vsd sd 0 0
+X1 lo 0 vcc vs vb ho vdd hin sd hin 0 IR2110
+Ch ho vs 1n
+Cl lo 0 1n
+* second instance for the bias currents: HIN at VDD, LIN at 0
+Vhi hin2 0 15
+Vli lin2 0 0
+X2 lo2 0 vcc 0 vb2 ho2 vdd hin2 0 lin2 0 IR2110
+Vb2 vb2 0 15
+.control
+set noaskquit
+echo "--- test 01: input thresholds ---"
+foreach vd 15 5 3.3
+  alterparam VD = $vd
+  reset
+  tran 20n 200u 0 50n
+  meas tran tr WHEN v(ho)=7.5 RISE=1
+  meas tran tf WHEN v(ho)=7.5 FALL=1
+  meas tran vth FIND v(hin) AT=tr
+  meas tran vtl FIND v(hin) AT=tf
+  meas tran tlr WHEN v(lo)=7.5 RISE=1
+  meas tran vthl FIND v(hin) AT=tlr
+  let vih = 0.633*$vd + 0.02
+  let vil = 0.40*$vd - 0.02
+  if (vth <= vih) & (vtl >= vil) & (vtl < vth) & (abs(vthl-vth) < 0.05)
+    echo "PASS 01 VDD=$vd V: switches up at $&vth V (VIH max $&vih), down at $&vtl V (VIL min $&vil), LIN = HIN"
+  else
+    echo "FAIL 01 VDD=$vd V: up $&vth down $&vtl LIN $&vthl"
+  end
+end
+* input bias current (second instance, VDD = 15 V)
+alterparam VD = 15
+reset
+op
+let iinp = -i(Vhi)
+let iinn = abs(i(Vli))
+if (iinp > 15u) & (iinp < 40u) & (iinn < 1u)
+  echo "PASS 01 input bias: IIN+ = $&iinp A (20u typ, 40u max), IIN- = $&iinn A (1u max)"
+else
+  echo "FAIL 01 input bias $&iinp $&iinn"
+end
+quit
+echo "--- test 01: input thresholds ---"
+foreach vd 15 5 3.3
+  alterparam VD = $vd
+  reset
+  tran 20n 200u 0 50n
+  meas tran tr WHEN v(ho)=7.5 RISE=1
+  meas tran tf WHEN v(ho)=7.5 FALL=1
+  meas tran vth FIND v(hin) AT=tr
+  meas tran vtl FIND v(hin) AT=tf
+  meas tran tlr WHEN v(lo)=7.5 RISE=1
+  meas tran vthl FIND v(hin) AT=tlr
+  let vih = 0.633*$vd + 0.02
+  let vil = 0.40*$vd - 0.02
+  if (vth <= vih) & (vtl >= vil) & (vtl < vth) & (abs(vthl-vth) < 0.05)
+    echo "PASS 01 VDD=$vd V: switches up at $&vth V (VIH max $&vih), down at $&vtl V (VIL min $&vil), LIN = HIN"
+  else
+    echo "FAIL 01 VDD=$vd V: up $&vth down $&vtl LIN $&vthl"
+  end
+end
+* input bias current
+alterparam VD = 15
+reset
+alter Vh dc = 15
+op
+let iinp = -i(Vh)
+alter Vh dc = 0
+op
+let iinn = abs(i(Vh))
+print iinp iinn
+if (iinp > 15u) & (iinp < 40u) & (iinn < 1u)
+  echo "PASS 01 input bias: IIN+ = $&iinp A (20u typ, 40u max), IIN- = $&iinn A (1u max)"
+else
+  echo "FAIL 01 input bias $&iinp $&iinn"
+end
+quit
+.endc
+.end

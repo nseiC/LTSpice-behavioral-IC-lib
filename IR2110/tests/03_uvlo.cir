@@ -1,0 +1,65 @@
+* IR2110 test 03 - undervoltage lockout
+*  a) VCC rising / falling (LIN high):  LO on at VCCUV+ (8.5 V typ, 7.4..9.6)
+*     and off at VCCUV- (8.2 V typ, 7.0..9.4)
+*  b) VBS rising / falling (HIN switching at 100 kHz): HO starts at the first
+*     HIN edge after VBSUV+ (8.6 V typ, 7.5..9.7), stops at VBSUV- (8.2 V)
+*  c) HIN held high while VBS recovers: HO waits for the next rising edge
+.include ir2110_ng.lib
+* (a) VCC triangle 0 -> 12 -> 0 V in 2 ms, LIN = HIN = high
+Vcc vcc 0 PWL(0 0 1m 12 2m 0)
+Vdd vdd 0 5
+Vh1 h1 0 5
+X1 lo 0 vcc vs1 vb1 ho1 vdd h1 0 h1 0 IR2110
+Vb1 vb1 vs1 15
+Vs1 vs1 0 0
+Cl lo 0 1n
+* (b) VBS triangle 0 -> 12 -> 0 V in 2 ms, HIN 100 kHz
+Vc2 vc2 0 15
+Vb2 vb2 vs2 PWL(0 0 1m 12 2m 0)
+Vs2 vs2 0 0
+Vh2 h2 0 PULSE(0 5 0 10n 10n 5u 10u)
+X2 lo2 0 vc2 vs2 vb2 ho2 vdd h2 0 0 0 IR2110
+Ch2 ho2 vs2 1n
+* (c) VBS steps 0 -> 15 V at 20 us, HIN high from 10 us to 50 us, then pulses
+Vb3 vb3 vs3 PWL(0 0 20u 0 20.1u 15)
+Vs3 vs3 0 0
+Vh3 h3 0 PWL(0 0 10u 0 10.01u 5 50u 5 50.01u 0 60u 0 60.01u 5)
+X3 lo3 0 vc2 vs3 vb3 ho3 vdd h3 0 0 0 IR2110
+Ch3 ho3 vs3 1n
+.control
+set noaskquit
+echo "--- test 03: UVLO ---"
+tran 20n 2m 0 100n
+meas tran tup WHEN v(lo)=4 RISE=1
+meas tran tdn WHEN v(lo)=4 FALL=1
+meas tran vup FIND v(vcc) AT=tup
+meas tran vdn FIND v(vcc) AT=tdn
+if (vup > 8.4) & (vup < 8.6) & (vdn > 8.1) & (vdn < 8.3)
+  echo "PASS 03a VCC UVLO: LO on at $&vup V (8.5 typ), off at $&vdn V (8.2 typ)"
+else
+  echo "FAIL 03a VCC UVLO $&vup $&vdn"
+end
+let vh2 = v(ho2)-v(vs2)
+let vbs2 = v(vb2)-v(vs2)
+meas tran tbu WHEN vh2=4 RISE=1
+meas tran tbd WHEN vh2=4 FALL=LAST
+meas tran vbu FIND vbs2 AT=tbu
+meas tran vbd FIND vbs2 AT=tbd
+* the first edge after 8.6 V comes within one 10 us period (0.12 V)
+if (vbu > 8.55) & (vbu < 8.75) & (vbd > 8.1) & (vbd < 8.35)
+  echo "PASS 03b VBS UVLO: HO starts at VBS = $&vbu V (8.6 typ + one period), last pulse at $&vbd V (8.2 typ)"
+else
+  echo "FAIL 03b VBS UVLO $&vbu $&vbd"
+end
+tran 10n 80u 0 20n
+let vh3 = v(ho3)-v(vs3)
+meas tran h3a MAX vh3 from=21u to=50u
+meas tran h3b FIND vh3 AT=62u
+if (h3a < 0.1) & (h3b > 14.9)
+  echo "PASS 03c HIN high while VBS recovers: HO waits for the next rising edge (on at 60 us)"
+else
+  echo "FAIL 03c $&h3a $&h3b"
+end
+quit
+.endc
+.end

@@ -1,0 +1,116 @@
+* IR2110 - buck sincrono 48 V -> 12 V / 4 A, 100 kHz, malha fechada
+*
+*   48 V --[M1]--+--[L 47u]--+-- 12 V / 3 ohm
+*                |           |
+*               [M2]       [Co 220u]
+*                |           |
+*               GND         GND
+*
+* O IR2110 aciona a meia-ponte: HO -> M1 (high-side, bootstrap Dbs/Cbs a
+* partir de VCC = 15 V), LO -> M2 (retificador sincrono).  Logica em VDD =
+* 5 V, VSS = COM = 0.
+*
+* Controle (comportamental, so para fechar a malha): amplificador de erro
+* com compensacao tipo III, rampa dente-de-serra de 3 V a 100 kHz,
+* comparador PWM e um gerador de tempo morto de ~140 ns (o IR2110 NAO tem
+* tempo morto proprio: HIN e LIN chegam complementares e ja com o atraso).
+*   duty = Vout/Vin = 25 %, ganho do modulador Vin/Vrampa = 48/3 = 16
+*   LC: f0 = 1,57 kHz;  ESR: 36 kHz;  cruzamento ~8 kHz
+*   compensacao: zeros em 1,1 e 1,5 kHz, polos em 36 e 53 kHz
+*   (ganho de malha medio: cruzamento 7,9 kHz, margem de fase 66 graus)
+*
+* Partida suave de 2 ms na referencia; degrau de carga 4 A -> 2 A em 6 ms.
+*
+* Vinj: fonte de 0 V em serie entre a saida e o divisor de realimentacao
+* (baixa impedancia -> alta impedancia).  No LTspice, troque Vinj pelo
+* componente FRA para medir o ganho de malha (veja o README).
+*
+* Rode e olhe: v(vout), v(sw), v(ho,sw), v(lo), v(vb,sw), i(L1), v(comp)
+
+.include ../IR2110.lib
+
+.param VIN=48
+Vin  vin 0 {VIN}
+Vcc  vcc 0 15
+Vdd  vdd 0 5
+
+* --- IR2110 + bootstrap ----------------------------------------------------
+*  LO  COM VCC VS  VB  HO  VDD HIN SD LIN VSS
+X1 lo 0 vcc sw vb ho vdd hin 0 lin 0 IR2110
+Dbs  vcc vb DBOOT
+Cbs  vb  sw 1u
+Cvcc vcc 0 10u
+
+* --- meia-ponte ------------------------------------------------------------
+Rg1 ho g1 10
+Rg2 lo g2 10
+X_M1 vin g1 sw NMOS100
+X_M2 sw  g2 0  NMOS100
+
+* --- filtro e carga --------------------------------------------------------
+L1   sw  nl 47u
+Rdcr nl  vout 20m
+Co   vout nc 220u
+Resr nc  0 20m
+Rload vout 0 3
+Rstep vout nst 6
+Sstep nst 0 nstc 0 SLOAD
+Vstep nstc 0 PWL(0 0 6m 0 6.001m 1)
+
+* --- realimentacao: 12 V -> 2,5 V, injecao do FRA ---------------------------
+Vinj nfb vout 0
+R1   nfb inv 10k
+Rb   inv 0 2.632k
+R3   nfb n3 435
+C3   n3  inv 10n
+R2   inv n2 3k
+C2   n2  comp 47n
+C1   inv comp 1n
+
+* --- amplificador de erro: 100 dB, 10 MHz, saida 0,5..3,7 V ----------------
+Vref nref 0 PWL(0 0 2m 2.5)
+Gea  0 nea nref inv 1m
+Rea  nea 0 100Meg
+Cea  nea 0 15.9p
+Bcl  nea 0 I = 1m*(uramp(V(nea)-3.8) - uramp(0.4-V(nea)))
+Beo  comp 0 V = min(max(V(nea),0.5),3.7)
+
+* --- modulador PWM e tempo morto --------------------------------------------
+* rampa 1 -> 4 V em 9,9 us, retorno em 100 ns (duty max ~90 % pelo grampo)
+Vramp ramp 0 PULSE(1 4 0 9.9u 100n 0 10u)
+Bpwm  pwm 0 V = 5*(0.5 + 0.5*tanh((V(comp)-V(ramp))/10m))
+* atraso RC (tau = 200 ns): HIN sobe ~140 ns depois do PWM, LIN ~140 ns
+* depois que o PWM cai; os dois desligam na hora
+Rdt   pwm ndt 1k
+Cdt   ndt 0 200p
+Bhin  hin 0 V = 5*(V(pwm)/5)*(0.5+0.5*tanh((V(ndt)-2.5)/50m))
+Blin  lin 0 V = 5*(1-V(pwm)/5)*(0.5-0.5*tanh((V(ndt)-2.5)/50m))
+
+* --- modelos -----------------------------------------------------------------
+* MOSFET de 100 V da classe do IRF540N: ~15 mohm com 15 V de gate,
+* Ciss ~1,5 nF, Qg ~30 nC a 48 V.  Subcircuito (MOSFET nivel 1 + Cgs, Cgd,
+* Cds e diodo de corpo explicitos) em vez de VDMOS: o VDMOS do ngspice da
+* "timestep too small" de vez em quando nas bordas rapidas de gate.
+.subckt NMOS100 D G S
+Rg  G gi 1.5
+M1  di gi S S NCH100 L=1u W=1u
+Rd  D di 12m
+Cgs gi S 1.4n
+Cgd gi D 150p
+Cds D S 300p
+Dbd S D DBD100
+.model NCH100 NMOS(LEVEL=1 VTO=3 KP=30 LAMBDA=0.01)
+.model DBD100 D(IS=1e-12 N=1.2 RS=10m CJO=0.3n)
+.ends
+* diodo de bootstrap ultrarrapido.  Sem TT de proposito: a recuperacao
+* reversa abrupta de um TT de dezenas de ns, a cada ciclo, derruba o passo
+* de tempo do ngspice ("timestep too small") - e nao muda nada no circuito.
+.model DBOOT D(IS=1n N=1.7 RS=0.1 CJO=10p)
+.model SLOAD SW(Ron=1m Roff=1Meg Vt=0.5 Vh=0.1)
+
+* gear: amortece o "ringing" numerico das comutacoes da meia-ponte
+.options method=gear
+* uic: parte do zero (capacitores descarregados), como uma fonte real; o .op
+* de um conversor chaveado em malha fechada nao tem significado fisico
+.tran 20n 8m 0 20n uic
+.end

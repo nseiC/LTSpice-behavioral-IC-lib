@@ -1,0 +1,51 @@
+* IR2111 test 05 - output drive
+*  IO+ (VO = 0 V, IN high for HO) >= 200 mA, 250 typ; IO- (VO = 15 V)
+*  >= 420 mA, 500 typ; PW <= 10 us.  VOH (VBIAS - VO) and VOL <= 100 mV
+*  at IO = 0.
+.include ir2111_ng.lib
+Vcc vcc 0 15
+Vh  hh 0 PWL(0 0 1u 0 1.01u 15)
+* HO shorted to VS, IN high -> source; LO forced to 15 V, IN high -> sink
+Vsh ho vs 0
+Vbs vb vs 15
+Vs  vs 0 0
+Vfl lo 0 15
+X1 vcc hh 0 lo vs ho vb IR2111
+* LO shorted to COM with IN low -> LO source; HO forced to VB with IN low -> HO sink
+Vsl lo2 0 0
+Vfh ho2 vs2 15
+Vb2 vb2 vs2 15
+Vs2 vs2 0 0
+X2 vcc 0 0 lo2 vs2 ho2 vb2 IR2111
+* open outputs
+X3 vcc hh 0 lo3 vs3 ho3 vb3 IR2111
+Vb3 vb3 vs3 15
+Vs3 vs3 0 0
+.control
+set noaskquit
+echo "--- test 05: output drive ---"
+tran 5n 4u 0 10n
+meas tran ihp FIND i(Vsh) AT=3u
+meas tran ilm FIND i(Vfl) AT=3u
+meas tran ilp FIND i(Vsl) AT=3u
+meas tran ihm FIND i(Vfh) AT=3u
+let ihp = abs(ihp)
+let ilm = abs(ilm)
+let ilp = abs(ilp)
+let ihm = abs(ihm)
+if (abs(ihp/0.25-1) < 0.03) & (abs(ilp/0.25-1) < 0.03) & (abs(ihm/0.5-1) < 0.03) & (abs(ilm/0.5-1) < 0.03)
+  echo "PASS 05a IO+ HO $&ihp A / LO $&ilp A (250 mA typ, 200 min); IO- HO $&ihm A / LO $&ilm A (500 mA typ, 420 min)"
+else
+  echo "FAIL 05a $&ihp $&ilp $&ihm $&ilm"
+end
+let dh = v(vb3)-v(ho3)
+meas tran voh FIND dh AT=3u
+meas tran vol FIND v(lo3) AT=3u
+if (voh < 0.1) & (vol < 0.1)
+  echo "PASS 05b VOH drop $&voh V, VOL $&vol V (<= 100 mV)"
+else
+  echo "FAIL 05b $&voh $&vol"
+end
+quit
+.endc
+.end

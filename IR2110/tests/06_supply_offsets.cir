@@ -1,0 +1,84 @@
+* IR2110 test 06 - supply currents, logic-ground offset, floating channel
+*  a) IQCC 180 uA, IQBS 125 uA, IQDD 15 uA typ at 15 V (VIN = 0 or VDD)
+*  b) VSS = +5 V and -5 V away from COM (recommended range): LO still
+*     follows LIN referred to VSS
+*  c) floating channel: VS = 500 V, VB = 515 V - HO switches referred to VS
+*  d) gate charge of HO comes out of VB (bootstrap): 15 V x 1 nF per edge
+* gear, as in every switching example of this library (trapezoidal rings
+* on the 1 nF load with long steps and garbles the supply-current integral)
+.options method=gear
+.include ir2110_ng.lib
+Vcc vcc 0 15
+Vdd vdd 0 15
+Vb1 vb1 vs1 15
+Vs1 vs1 0 0
+X1 lo1 0 vcc vs1 vb1 ho1 vdd 0 0 0 0 IR2110
+* (b) logic ground at +5 V and at -5 V, VDD = VSS + 5 V, LIN pulses
+Vss1 ss1 0 5
+Vdd1 dd1 ss1 5
+Vl1 l1 ss1 PULSE(0 5 1u 10n 10n 1u 2u)
+X2 lo2 0 vcc vs2 vb2 ho2 dd1 ss1 ss1 l1 ss1 IR2110
+Vb2 vb2 vs2 15
+Vs2 vs2 0 0
+Cl2 lo2 0 1n
+Vss3 ss3 0 -5
+Vdd3 dd3 ss3 5
+Vl3 l3 ss3 PULSE(0 5 1u 10n 10n 1u 2u)
+X3 lo3 0 vcc vs3 vb3 ho3 dd3 ss3 ss3 l3 ss3 IR2110
+Vb3 vb3 vs3 15
+Vs3 vs3 0 0
+Cl3 lo3 0 1n
+* (c)+(d) VS at 500 V, VB from a 15 V source with an ammeter
+Vs4 vs4 0 500
+Vb4 vb4x vs4 15
+Vib vb4x vb4 0
+Vh4 h4 0 PULSE(0 15 1u 10n 10n 1u 2u)
+X4 lo4 0 vcc vs4 vb4 ho4 vdd h4 0 0 0 IR2110
+Ch4 ho4 vs4 1n
+.control
+set noaskquit
+echo "--- test 06: supplies and offsets ---"
+op
+let iqcc = -i(Vcc)
+let iqbs = -i(Vb1)
+let iqdd = -i(Vdd)
+* Vcc and Vdd also feed X2..X4; use instance 1 currents directly
+let iqcc1 = @b.x1.bqcc[i]
+let iqbs1 = @b.x1.bqbs[i]
+let iqdd1 = @b.x1.bqdd[i]
+print iqcc1 iqbs1 iqdd1
+if (abs(iqcc1/180u-1) < 0.02) & (abs(iqbs1/125u-1) < 0.02) & (abs(iqdd1/15u-1) < 0.02)
+  echo "PASS 06a quiescent: IQCC $&iqcc1 A (180u), IQBS $&iqbs1 A (125u), IQDD $&iqdd1 A (15u)"
+else
+  echo "FAIL 06a $&iqcc1 $&iqbs1 $&iqdd1"
+end
+tran 2n 5u 0 10n
+meas tran a2 FIND v(lo2) AT=1.6u
+meas tran b2 FIND v(lo2) AT=2.6u
+meas tran a3 FIND v(lo3) AT=1.6u
+meas tran b3 FIND v(lo3) AT=2.6u
+if (a2 > 14.9) & (b2 < 0.1) & (a3 > 14.9) & (b3 < 0.1)
+  echo "PASS 06b VSS = +5 V and -5 V from COM: LO follows LIN referred to VSS"
+else
+  echo "FAIL 06b $&a2 $&b2 $&a3 $&b3"
+end
+let vh4 = v(ho4)-v(vs4)
+meas tran a4 FIND vh4 AT=1.6u
+meas tran b4 FIND vh4 AT=2.6u
+meas tran ahi FIND v(ho4) AT=1.6u
+if (a4 > 14.9) & (b4 < 0.1) & (ahi > 514.9)
+  echo "PASS 06c VS = 500 V: HO switches between VS and VB (HO = $&ahi V)"
+else
+  echo "FAIL 06c $&a4 $&b4 $&ahi"
+end
+* charge drawn from VB over one turn-on edge (1 to 1.5 us) minus quiescent
+meas tran qb INTEG i(Vib) from=1u to=1.5u
+let qg = qb - 0.5u*125u
+if abs(qg/15n-1) < 0.05
+  echo "PASS 06d gate charge of HO drawn from VB: $&qg C (15 V x 1 nF = 15 nC)"
+else
+  echo "FAIL 06d $&qg"
+end
+quit
+.endc
+.end

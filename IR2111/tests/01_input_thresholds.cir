@@ -1,0 +1,55 @@
+* IR2111 test 01 - logic input thresholds and bias currents
+*  VIH (min for logic 1) 6.4 / 9.5 / 12.6 V and VIL (max for logic 0)
+*  3.8 / 6.0 / 8.3 V at VCC = 10 / 15 / 20 V; IIN+ <= 40 uA (20 typ) at
+*  VIN = VCC, IIN- <= 1 uA at VIN = 0
+.include ir2111_ng.lib
+.param VC=15
+Vcc vcc 0 {VC}
+Vbs vb vs {VC}
+Vs  vs 0 0
+Vi  in 0 PWL(0 0 2m {VC} 4m 0)
+X1 vcc in 0 lo vs ho vb IR2111
+Ch ho vs 1n
+Cl lo 0 1n
+* second instance for the bias currents, IN at VCC
+Vi2 in2 0 15
+X2 vc2 in2 0 lo2 0 ho2 vb2 IR2111
+Vc2 vc2 0 15
+Vb2 vb2 0 15
+Vi3 in3 0 0
+X3 vc2 in3 0 lo3 0 ho3 vb2 IR2111
+.control
+set noaskquit
+echo "--- test 01: input thresholds ---"
+foreach vc 10 15 20
+  alterparam VC = $vc
+  reset
+  tran 0.5u 4m 0 1u
+  let half = $vc/2
+  meas tran tr WHEN v(ho)=half RISE=1
+  meas tran tf WHEN v(ho)=half FALL=1
+  meas tran vth FIND v(in) AT=tr
+  meas tran vtl FIND v(in) AT=tf
+  meas tran tlf WHEN v(lo)=half FALL=1
+  meas tran vthl FIND v(in) AT=tlf
+  let vih = 0.62*$vc + 0.2 + 0.03
+  let vil = 0.45*$vc - 0.7 - 0.03
+  if (vth <= vih) & (vtl >= vil) & (vtl < vth) & (abs(vthl-vth) < 0.05)
+    echo "PASS 01 VCC=$vc V: HO on above $&vth V (VIH $&vih), off below $&vtl V (VIL $&vil); LO complementary"
+  else
+    echo "FAIL 01 VCC=$vc V: up $&vth down $&vtl LO $&vthl"
+  end
+end
+alterparam VC = 15
+reset
+op
+let iinp = -i(Vi2)
+let iinn = abs(i(Vi3))
+if (iinp > 15u) & (iinp < 40u) & (iinn < 1u)
+  echo "PASS 01 input bias: IIN+ = $&iinp A (20u typ, 40u max), IIN- = $&iinn A (1u max)"
+else
+  echo "FAIL 01 input bias $&iinp $&iinn"
+end
+quit
+.endc
+.end

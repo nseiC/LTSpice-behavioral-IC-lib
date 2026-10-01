@@ -1,0 +1,56 @@
+* IR2110 test 02 - function and cycle-by-cycle shutdown (Figure 1)
+*  HO follows HIN, LO follows LIN (in phase).  SD high turns both off; when
+*  SD returns low, an output stays off until its input goes low and high
+*  again (edge-triggered shutdown).
+*   HIN = LIN : high 1-2 us, 3-4 us, 5-6 us, 7-8 us
+*   SD        : high 2.5-3.5 us (covers the rising edge at 3 us, released
+*               while the input is still high) and 7.3-7.4 us (short pulse)
+.include ir2110_ng.lib
+Vcc vcc 0 15
+Vdd vdd 0 5
+Vbs vb vs 15
+Vs  vs 0 0
+Vin in 0 PULSE(0 5 1u 10n 10n 1u 2u)
+Vsd sd 0 PWL(0 0 2.5u 0 2.51u 5 3.5u 5 3.51u 0 7.3u 0 7.31u 5 7.4u 5 7.41u 0)
+X1 lo 0 vcc vs vb ho vdd in sd in 0 IR2110
+Ch ho vs 1n
+Cl lo 0 1n
+.control
+set noaskquit
+echo "--- test 02: logic and shutdown ---"
+tran 1n 9u 0 5n
+let vh = v(ho)-v(vs)
+meas tran h1 FIND vh AT=1.6u
+meas tran l1 FIND v(lo) AT=1.6u
+meas tran h0 FIND vh AT=2.6u
+if (h1 > 14.9) & (l1 > 14.9) & (h0 < 0.1)
+  echo "PASS 02a HO and LO in phase with HIN / LIN"
+else
+  echo "FAIL 02a $&h1 $&l1 $&h0"
+end
+meas tran h2 MAX vh from=3.2u to=4u
+meas tran l2 MAX v(lo) from=3.2u to=4u
+if (h2 < 0.1) & (l2 < 0.1)
+  echo "PASS 02b SD over the rising edge, released at 3.5 us with the input still high: both stay off until the next edge"
+else
+  echo "FAIL 02b output came back: HO $&h2 LO $&l2"
+end
+meas tran h3 FIND vh AT=5.6u
+meas tran l3 FIND v(lo) AT=5.6u
+if (h3 > 14.9) & (l3 > 14.9)
+  echo "PASS 02c next rising edge (5 us) turns both outputs on again"
+else
+  echo "FAIL 02c $&h3 $&l3"
+end
+meas tran h4 FIND vh AT=7.25u
+meas tran h5 MAX vh from=7.6u to=8u
+meas tran l5 MAX v(lo) from=7.6u to=8u
+if (h4 > 14.9) & (h5 < 0.1) & (l5 < 0.1)
+  echo "PASS 02d 100 ns SD pulse at 7.3 us cuts the pulse short; the outputs stay off for the rest of the cycle"
+else
+  echo "FAIL 02d $&h4 $&h5 $&l5"
+end
+* tsd: SD 50 % -> output 90 %, VDD = 15 V (table 110 ns typ)
+quit
+.endc
+.end

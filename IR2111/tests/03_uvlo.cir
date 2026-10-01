@@ -1,0 +1,74 @@
+* IR2111 test 03 - undervoltage lockout
+*  a) VCC rising / falling, IN low: LO on at VCCUV+ (8.6 V typ, 7.6..9.6),
+*     off at VCCUV- (8.2 V typ, 7.2..9.2)
+*  b) VBS rising / falling, IN switching at 50 kHz: HO starts at the first
+*     IN edge after VBSUV+ (8.4 V typ), stops at VBSUV- (8.1 V typ)
+*  c) IN held high while VBS recovers: HO waits for the next rising edge
+*  d) VCC under-voltage turns HO off too
+.include ir2111_ng.lib
+Vcc vcc 0 PWL(0 0 1m 12 2m 0)
+X1 vcc 0 0 lo vs1 ho1 vb1 IR2111
+Vb1 vb1 vs1 15
+Vs1 vs1 0 0
+Cl lo 0 1n
+Vc2 vc2 0 15
+Vb2 vb2 vs2 PWL(0 0 1m 12 2m 0)
+Vs2 vs2 0 0
+Vi2 in2 0 PULSE(0 15 0 10n 10n 10u 20u)
+X2 vc2 in2 0 lo2 vs2 ho2 vb2 IR2111
+Ch2 ho2 vs2 1n
+Vb3 vb3 vs3 PWL(0 0 20u 0 20.1u 15)
+Vs3 vs3 0 0
+Vi3 in3 0 PWL(0 0 10u 0 10.01u 15 50u 15 50.01u 0 60u 0 60.01u 15)
+X3 vc2 in3 0 lo3 vs3 ho3 vb3 IR2111
+Ch3 ho3 vs3 1n
+Vc4 vc4 0 PWL(0 15 30u 15 30.1u 5)
+Vi4 in4 0 PWL(0 0 2u 0 2.01u 15)
+X4 vc4 in4 0 lo4 vs4 ho4 vb4 IR2111
+Vb4 vb4 vs4 15
+Vs4 vs4 0 0
+Ch4 ho4 vs4 1n
+.control
+set noaskquit
+echo "--- test 03: UVLO ---"
+tran 20n 2m 0 100n
+meas tran tup WHEN v(lo)=4 RISE=1
+meas tran tdn WHEN v(lo)=4 FALL=1
+meas tran vup FIND v(vcc) AT=tup
+meas tran vdn FIND v(vcc) AT=tdn
+if (vup > 8.5) & (vup < 8.7) & (vdn > 8.1) & (vdn < 8.3)
+  echo "PASS 03a VCC UVLO: LO on at $&vup V (8.6 typ), off at $&vdn V (8.2 typ)"
+else
+  echo "FAIL 03a VCC UVLO $&vup $&vdn"
+end
+let vh2 = v(ho2)-v(vs2)
+let vbs2 = v(vb2)-v(vs2)
+meas tran tbu WHEN vh2=4 RISE=1
+meas tran tbd WHEN vh2=4 FALL=LAST
+meas tran vbu FIND vbs2 AT=tbu
+meas tran vbd FIND vbs2 AT=tbd
+if (vbu > 8.35) & (vbu < 8.65) & (vbd > 8.0) & (vbd < 8.35)
+  echo "PASS 03b VBS UVLO: HO starts at VBS = $&vbu V (8.4 typ + one period), last pulse at $&vbd V (8.1 typ)"
+else
+  echo "FAIL 03b VBS UVLO $&vbu $&vbd"
+end
+tran 10n 80u 0 20n
+let vh3 = v(ho3)-v(vs3)
+meas tran h3a MAX vh3 from=21u to=50u
+meas tran h3b FIND vh3 AT=62u
+if (h3a < 0.1) & (h3b > 14.9)
+  echo "PASS 03c IN high while VBS recovers: HO waits for the next rising edge (on at 61 us)"
+else
+  echo "FAIL 03c $&h3a $&h3b"
+end
+let vh4 = v(ho4)-v(vs4)
+meas tran h4a FIND vh4 AT=25u
+meas tran h4b FIND vh4 AT=35u
+if (h4a > 14.9) & (h4b < 0.1)
+  echo "PASS 03d VCC drops to 5 V: HO turns off as well"
+else
+  echo "FAIL 03d $&h4a $&h4b"
+end
+quit
+.endc
+.end

@@ -1,0 +1,4 @@
+examples/.run/
+tests/ir2110_ng.lib
+*.raw
+examples/.fra/

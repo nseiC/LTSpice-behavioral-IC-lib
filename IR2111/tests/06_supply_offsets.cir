@@ -1,0 +1,49 @@
+* IR2111 test 06 - supply currents and the floating channel
+*  a) IQCC 70 uA, IQBS 50 uA typ at 15 V
+*  b) VS = 600 V, VB = 615 V: HO switches referred to VS
+*  c) gate charge of HO comes out of VB (bootstrap): 15 V x 1 nF per edge
+.include ir2111_ng.lib
+Vcc vcc 0 15
+X1 vcc 0 0 lo1 vs1 ho1 vb1 IR2111
+Vb1 vb1 vs1 15
+Vs1 vs1 0 0
+Vs4 vs4 0 600
+Vb4 vb4x vs4 15
+Vib vb4x vb4 0
+Vh4 h4 0 PULSE(0 15 1u 10n 10n 3u 6u)
+X4 vcc h4 0 lo4 vs4 ho4 vb4 IR2111
+Ch4 ho4 vs4 1n
+Cl4 lo4 0 1n
+* gear, as in every switching example of this library
+.options method=gear
+.control
+set noaskquit
+echo "--- test 06: supplies and the floating channel ---"
+op
+let iqcc1 = @b.x1.bqcc[i]
+let iqbs1 = @b.x1.bqbs[i]
+if (abs(iqcc1/70u-1) < 0.02) & (abs(iqbs1/50u-1) < 0.02)
+  echo "PASS 06a quiescent: IQCC $&iqcc1 A (70u typ), IQBS $&iqbs1 A (50u typ)"
+else
+  echo "FAIL 06a $&iqcc1 $&iqbs1"
+end
+tran 2n 8u 0 10n
+let vh4 = v(ho4)-v(vs4)
+meas tran a4 FIND vh4 AT=3u
+meas tran b4 FIND vh4 AT=5.5u
+meas tran ahi FIND v(ho4) AT=3u
+if (a4 > 14.9) & (b4 < 0.1) & (ahi > 614.9)
+  echo "PASS 06b VS = 600 V: HO switches between VS and VB (HO = $&ahi V)"
+else
+  echo "FAIL 06b $&a4 $&b4 $&ahi"
+end
+meas tran qb INTEG i(Vib) from=1u to=2.5u
+let qg = qb - 1.5u*50u
+if abs(qg/15n-1) < 0.05
+  echo "PASS 06c gate charge of HO drawn from VB: $&qg C (15 V x 1 nF = 15 nC)"
+else
+  echo "FAIL 06c $&qg"
+end
+quit
+.endc
+.end

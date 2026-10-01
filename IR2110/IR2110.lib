@@ -1,0 +1,378 @@
+*------------------------------------------------------------------------------
+* IR2110 - High and low side driver (also covers the IR2113)
+* Behavioral ("functional") macromodel for LTspice.
+*
+* Based on:
+*   International Rectifier (Infineon), "IR2110(S)PbF/IR2113(S)PbF High and
+*   low side driver", Data Sheet No. PD60147 rev.V (6/3/2019)
+*
+* This is NOT a transistor-level model.  Every block of the Functional Block
+* Diagram is reproduced by its terminal behaviour, with the numbers taken from
+* the Static and Dynamic Electrical Characteristics tables (TYPICAL column)
+* and from the typical curves (Figures 7..27).  The point is to simulate the
+* gate drive of a half-bridge - bootstrap, dead time, UVLO, shutdown - inside
+* a closed-loop converter: fast, convergent, and independent of the time step.
+*
+* ---------------------------------------------------------------------------
+* PIN ORDER  (14-lead PDIP pin order; the NC pins 4, 8 and 14 are left out)
+* ---------------------------------------------------------------------------
+*   1  LO    low-side gate drive output        9  VDD   logic supply
+*   2  COM   low-side return                  10  HIN   high-side logic input
+*   3  VCC   low-side supply                  11  SD    shutdown input
+*   5  VS    high-side floating return        12  LIN   low-side logic input
+*   6  VB    high-side floating supply        13  VSS   logic ground
+*   7  HO    high-side gate drive output
+*
+*   X1 LO COM VCC VS VB HO VDD HIN SD LIN VSS IR2110
+*
+*   (16-lead SOIC IR2110S: same signals, different pin numbers - use the
+*    same subcircuit, the port ORDER above is what matters.)
+*
+* ---------------------------------------------------------------------------
+* WHAT IS MODELLED
+* ---------------------------------------------------------------------------
+*  * Logic inputs HIN, LIN, SD: CMOS Schmitt triggers referred to VSS, with
+*    thresholds proportional to VDD at the guaranteed limits of Figures 12B
+*    and 13B: rising threshold VIH = 0.633*VDD (9.5 V at VDD = 15 V, 3.2 V at
+*    5 V), falling threshold VIL = 0.40*VDD (6.0 V at 15 V, 2.0 V at 5 V).
+*    750 k pull-down to VSS (IIN+ = 20 uA at 15 V), clamp diodes to VDD/VSS.
+*  * Cycle-by-cycle edge-triggered shutdown: each channel has the RS latch of
+*    the block diagram.  SD high turns both outputs off; when SD returns low
+*    an output stays off until its input goes low and high again (Figure 1).
+*  * UVLO on VCC (8.5 V / 8.2 V typ) and on VBS (8.6 V / 8.2 V typ), with
+*    hysteresis.  VCC under-voltage holds LO low (level) and HO low; VBS
+*    under-voltage holds HO low.  HO only comes back on the NEXT rising edge
+*    of HIN after the fault clears (the high side is set by edge pulses
+*    through the level shifter, so a fault resets its latch).
+*  * Propagation delays (Figures 7B/7C, 8B/8C, 9B/9C, typical): ton 120 ns,
+*    toff 94 ns, tsd 110 ns at VCC = VBS = VDD = 15 V, CL = 1 nF; they grow
+*    at low VDD (ton/toff ~ 140/150 ns at VDD = 5 V) and shrink with VBIAS.
+*    HO and LO use the same delay chain, so they are matched (MT ~ 0).
+*    The delays are linear ramps - an input pulse shorter than ~ton is
+*    swallowed, as in the real part.
+*  * Output stages: pull-up and pull-down, I = Isat*tanh(V/V0)/tanh(2), with
+*    Isat = IO+ / IO- = 2.5 A typ at 15 V, scaled with VBIAS as Figures
+*    26B/27B (1.45 A at 10 V, 3.55 A at 20 V); knee V0 = VBIAS/2.  The gate
+*    of each output device is ramped (pre-driver), which is what sets the
+*    rise / fall time: tr 25 ns, tf 17 ns at 15 V into 1 nF (Figures 10B,
+*    11B: tr falls and tf grows with VBIAS).  No cross-conduction between
+*    the two output devices.  Body diodes HO-VB, VS-HO, LO-VCC, COM-LO.
+*  * Quiescent currents: IQCC 180 uA, IQBS 125 uA, IQDD 15 uA typ at 15 V,
+*    following the shape of Figures 17B, 18B, 19B.  Gate charge is drawn from
+*    VCC (LO) and from VB (HO) - the bootstrap capacitor sees it.
+*  * The logic ground VSS may sit +-5 V away from COM; everything on the logic
+*    side is referred to VSS, LO to COM and HO to VS.
+*
+* ---------------------------------------------------------------------------
+* WHAT IS NOT MODELLED  (behavioural model - know the limits)
+* ---------------------------------------------------------------------------
+*  * No temperature model (KD / KE scale the delays and edges; KD = 1.3 and
+*    KE = 1.8 land within 7 % of the MAX column at 25 C).
+*  * No bootstrap diode inside (the IR2110 has none - put your own).
+*  * Offset supply leakage (ILK <= 50 uA at 500 V), dVs/dt immunity,
+*    negative VS transients and latch-up, level-shifter dV/dt false
+*    triggering: not modelled.  The 500 V / 600 V ratings are not policed.
+*  * The input thresholds sit at the guaranteed limits (VIH max, VIL min);
+*    a real part switches somewhere in between.
+*  * With VDD - VSS below ~2.5 V the logic is considered dead and both
+*    outputs are held low (not specified in the datasheet).
+*  * With VBIAS under the UVLO the outputs are actively held low down to
+*    0 V of supply (5 % of the normal sink strength) - the real part's
+*    behaviour with a fully discharged supply is not specified.
+*
+* ---------------------------------------------------------------------------
+* PARAMETERS  (override per instance:  X1 ... IR2110 KD=1.3 KE=1.8)
+* ---------------------------------------------------------------------------
+*  KD       delay factor (1 = typical, ~1.3 = max column at 25 C)
+*  KE       rise/fall-time factor (1 = typical, ~1.8 = max column)
+*  VIHF     rising input threshold, fraction of VDD-VSS     (0.633)
+*  VILF     falling input threshold, fraction of VDD-VSS    (0.40)
+*  RIN      input pull-down                                 (750k)
+*  CIN      input capacitance (not in the datasheet)        (2 pF)
+*  COUT     HO / LO pin capacitance (not in the datasheet)  (10 pF)
+*  UVCCP/N  VCC UVLO rising / falling threshold            (8.5 / 8.2 V)
+*  UVBSP/N  VBS UVLO rising / falling threshold            (8.6 / 8.2 V)
+*  TON, TOFF, TSD  ton / toff / tsd at VDD = VBIAS = 15 V, ns (120/94/110)
+*  KBON     ton change per -5 V of VBIAS (Figure 7B)        (0.167)
+*  KBOFF    toff change per -5 V of VBIAS (Figure 8B)       (0.183)
+*  DON*, DOFF*  ton / toff factor at VDD = 3.5/5/10/20 V (Figures 7C, 8C)
+*  TER*, TEF*   output gate ramp, ns, at VBIAS = 10/15/20 V (fitted to
+*               Figures 10B / 11B)
+*  TFAST    release time of the device that turns off, ns  (3)
+*  TOON*, TOOF* time from the start of that ramp to 10 % / 90 % of the
+*               output into 1 nF, ns (fitted; subtracted from ton / toff)
+*  IO       output short-circuit current at VBIAS = 15 V, A  (2.5)
+*  KIO      IO change per +5 V of VBIAS (Figures 26B/27B)   (0.42)
+*  KV0      output knee as a fraction of VBIAS              (0.5)
+*  IQCC, IQBS, IQDD   quiescent supply currents at 15 V     (180u 125u 15u)
+*
+* ---------------------------------------------------------------------------
+* LTspice .FRA / .AC / .OP
+* ---------------------------------------------------------------------------
+* No time-dependent sources, no internal oscillator; every Schmitt trigger,
+* UVLO and latch is an integrating set/reset cell with DC solutions 0 and 1
+* only, and every delay or edge is a finite-slope ramp written so that its
+* DC value is exact, with no kink where a node rests.  The operating point
+* needs no search and the edge times move continuously with the input,
+* whatever the time step.  See README.md for the loop-gain measurement of
+* the closed-loop example.
+*------------------------------------------------------------------------------
+
+.SUBCKT IR2110 LO COM VCC VS VB HO VDD HIN SD LIN VSS
++ KD=1 KE=1 VIHF=0.633 VILF=0.40 RIN=750k CIN=2p COUT=10p
++ UVCCP=8.5 UVCCN=8.2 UVBSP=8.6 UVBSN=8.2
++ TON=120 TOFF=94 TSD=110 KBON=0.167 KBOFF=0.183
++ TOON10=13.9 TOON15=12.4 TOON20=11.0 TOOF10=5.6 TOOF15=9.2 TOOF20=12.5
++ DON35=1.58 DON5=1.20 DON10=1.035 DON20=0.966
++ DOFF35=2.14 DOFF5=1.56 DOFF10=1.17 DOFF20=0.76
++ TER10=75.5 TER15=69.2 TER20=57.1 TEF10=3.6 TEF15=32.1 TEF20=79.8 TFAST=3
++ IO=2.5 KIO=0.42 KV0=0.5
++ IQCC=180u IQBS=125u IQDD=15u
+
+*==============================================================================
+* SUPPLIES, UVLO
+* Internal "digital" nodes are 0..1 V, referred to VSS.
+* Every state bit (Schmitt triggers, UVLO, latches) is an INTEGRATING
+* set/reset cell, the same construction as the UC3854 and L6599A models:
+*
+*     C dq/dt = G * ( S*(1-q) - R*q ),   G = 1 mA/V, C = 1 pF (1 ns)
+*     S = set   OR ( q > 0.5 AND NOT reset )
+*     R = reset OR ( q < 0.5 AND NOT set )
+*
+* With neither input active the cell is parked at 0 or 1, the only DC
+* solutions are 0 and 1, and it holds its state whatever the step size.
+* For a Schmitt trigger, S = (input above the upper threshold) and
+* R = (input below the lower one), each a 10 mV-wide linear ramp.
+*==============================================================================
+Bvdd  n_vdd VSS V = max(0, V(VDD,VSS))
+Bvcc  n_vcc VSS V = max(0, V(VCC,COM))
+Bvbs  n_vbs VSS V = max(0, V(VB,VS))
+* logic alive (not specified: below ~2.5 V of VDD the outputs are held low)
+Bokd  n_okd VSS V = 0.5 + 0.5*tanh((V(n_vdd,VSS) - 2.5)/0.1)
+
+* VCC UVLO (n_okc = 1: VCC good)
+Bokcs n_okcs VSS V = max(0,min(1,(V(n_vcc,VSS)-{UVCCP})*100+0.5))
+Bokcr n_okcr VSS V = max(0,min(1,({UVCCN}-V(n_vcc,VSS))*100+0.5))
+Bokcq n_okcq VSS V = max(0,min(1,(V(n_okc,VSS)-0.5)*20))
+Bokc  VSS n_okc I = 1m*(
++     max(V(n_okcs,VSS), V(n_okcq,VSS)*(1-V(n_okcr,VSS)))*(1-V(n_okc,VSS))
++   - max(V(n_okcr,VSS), (1-V(n_okcq,VSS))*(1-V(n_okcs,VSS)))*V(n_okc,VSS) )
+Cokc  n_okc VSS 1p
+Rokcg n_okc VSS 1G
+* VBS UVLO (n_okb = 1: VBS good)
+Bokbs n_okbs VSS V = max(0,min(1,(V(n_vbs,VSS)-{UVBSP})*100+0.5))
+Bokbr n_okbr VSS V = max(0,min(1,({UVBSN}-V(n_vbs,VSS))*100+0.5))
+Bokbq n_okbq VSS V = max(0,min(1,(V(n_okb,VSS)-0.5)*20))
+Bokb  VSS n_okb I = 1m*(
++     max(V(n_okbs,VSS), V(n_okbq,VSS)*(1-V(n_okbr,VSS)))*(1-V(n_okb,VSS))
++   - max(V(n_okbr,VSS), (1-V(n_okbq,VSS))*(1-V(n_okbs,VSS)))*V(n_okb,VSS) )
+Cokb  n_okb VSS 1p
+Rokbg n_okb VSS 1G
+
+* quiescent currents (Figures 17B, 18B, 19B)
+Bqcc  VCC COM I = {IQCC}*pow(V(n_vcc,VSS)/15, 1.7)
+Bqbs  VB  VS  I = {IQBS}*pow(V(n_vbs,VSS)/15, 1.7)
+Bqdd  VDD VSS I = {IQDD}*(0.3*tanh(V(n_vdd,VSS)) + 0.7*V(n_vdd,VSS)/15)
+
+*==============================================================================
+* LOGIC INPUTS  HIN, LIN, SD  (Schmitt triggers referred to VSS)
+*   rising threshold  VIHF*VDD,  falling threshold  VILF*VDD
+*==============================================================================
+.model DIR2110 D(IS=1e-15 RS=5 CJO=0)
+Rih   HIN VSS {RIN}
+Cih   HIN VSS {CIN}
+Dihp  HIN VDD DIR2110
+Dihn  VSS HIN DIR2110
+Ril   LIN VSS {RIN}
+Cil   LIN VSS {CIN}
+Dilp  LIN VDD DIR2110
+Diln  VSS LIN DIR2110
+Ris   SD  VSS {RIN}
+Cis   SD  VSS {CIN}
+Disp  SD  VDD DIR2110
+Disn  VSS SD  DIR2110
+
+* HIN
+Bxhs n_xhs VSS V = max(0,min(1,(V(HIN,VSS)-{VIHF}*V(n_vdd,VSS))*100+0.5))
+Bxhr n_xhr VSS V = max(0,min(1,({VILF}*V(n_vdd,VSS)-V(HIN,VSS))*100+0.5))
+Bxhq n_xhq VSS V = max(0,min(1,(V(n_xh,VSS)-0.5)*20))
+Bxh  VSS n_xh I = 1m*(
++     max(V(n_xhs,VSS), V(n_xhq,VSS)*(1-V(n_xhr,VSS)))*(1-V(n_xh,VSS))
++   - max(V(n_xhr,VSS), (1-V(n_xhq,VSS))*(1-V(n_xhs,VSS)))*V(n_xh,VSS) )
+Cxh  n_xh VSS 1p
+Rxhg n_xh VSS 1G
+* LIN
+Bxls n_xls VSS V = max(0,min(1,(V(LIN,VSS)-{VIHF}*V(n_vdd,VSS))*100+0.5))
+Bxlr n_xlr VSS V = max(0,min(1,({VILF}*V(n_vdd,VSS)-V(LIN,VSS))*100+0.5))
+Bxlq n_xlq VSS V = max(0,min(1,(V(n_xl,VSS)-0.5)*20))
+Bxl  VSS n_xl I = 1m*(
++     max(V(n_xls,VSS), V(n_xlq,VSS)*(1-V(n_xlr,VSS)))*(1-V(n_xl,VSS))
++   - max(V(n_xlr,VSS), (1-V(n_xlq,VSS))*(1-V(n_xls,VSS)))*V(n_xl,VSS) )
+Cxl  n_xl VSS 1p
+Rxlg n_xl VSS 1G
+* SD
+Bxss n_xss VSS V = max(0,min(1,(V(SD,VSS)-{VIHF}*V(n_vdd,VSS))*100+0.5))
+Bxsr n_xsr VSS V = max(0,min(1,({VILF}*V(n_vdd,VSS)-V(SD,VSS))*100+0.5))
+Bxsq n_xsq VSS V = max(0,min(1,(V(n_xs,VSS)-0.5)*20))
+Bxs  VSS n_xs I = 1m*(
++     max(V(n_xss,VSS), V(n_xsq,VSS)*(1-V(n_xsr,VSS)))*(1-V(n_xs,VSS))
++   - max(V(n_xsr,VSS), (1-V(n_xsq,VSS))*(1-V(n_xss,VSS)))*V(n_xs,VSS) )
+Cxs  n_xs VSS 1p
+Rxsg n_xs VSS 1G
+
+* SD path: extra delay tsd - toff, a lag + comparator
+Bsl   VSS n_sl I = 1m*(V(n_xs,VSS) - V(n_sl,VSS))*0.693/({KD}*max(1,{TSD}-{TOFF}))
+Csl   n_sl VSS 1p
+Rsl   n_sl VSS 1G
+Bsd   n_sd VSS V = min(1, max(0, 20*(V(n_sl,VSS) - 0.5) + 0.5))
+
+*==============================================================================
+* CYCLE-BY-CYCLE LATCHES (block diagram: one RS latch per input)
+*   q = 1 blocks the channel.  Set: SD (and, for HO, a VCC or VBS fault).
+*   Reset: the channel's input LOW (set wins).  So after SD (or a fault)
+*   the output returns only on the next rising edge of its input.
+*==============================================================================
+* OR of SD and the two faults, written smooth (no kink at the rest state)
+Bseth n_seth VSS V = 1 - (1-V(n_sd,VSS))*V(n_okc,VSS)*V(n_okb,VSS)
+* HO latch: set by SD or a VCC / VBS fault, reset by HIN low
+Bqhs n_qhs VSS V = V(n_seth,VSS)
+Bqhr n_qhr VSS V = (1-V(n_xh,VSS))*(1-V(n_seth,VSS))
+Bqhq n_qhq VSS V = max(0,min(1,(V(n_qh,VSS)-0.5)*20))
+Bqh  VSS n_qh I = 1m*(
++     max(V(n_qhs,VSS), V(n_qhq,VSS)*(1-V(n_qhr,VSS)))*(1-V(n_qh,VSS))
++   - max(V(n_qhr,VSS), (1-V(n_qhq,VSS))*(1-V(n_qhs,VSS)))*V(n_qh,VSS) )
+Cqh  n_qh VSS 1p
+Rqhg n_qh VSS 1G
+* LO latch: set by SD, reset by LIN low
+Bqls n_qls VSS V = V(n_sd,VSS)
+Bqlr n_qlr VSS V = (1-V(n_xl,VSS))*(1-V(n_sd,VSS))
+Bqlq n_qlq VSS V = max(0,min(1,(V(n_ql,VSS)-0.5)*20))
+Bql  VSS n_ql I = 1m*(
++     max(V(n_qls,VSS), V(n_qlq,VSS)*(1-V(n_qlr,VSS)))*(1-V(n_ql,VSS))
++   - max(V(n_qlr,VSS), (1-V(n_qlq,VSS))*(1-V(n_qls,VSS)))*V(n_ql,VSS) )
+Cql  n_ql VSS 1p
+Rqlg n_ql VSS 1G
+
+* channel commands (0..1)
+Bch   n_ch VSS V = V(n_xh,VSS)*(1-V(n_qh,VSS))*(1-V(n_seth,VSS))*V(n_okd,VSS)
+Bcl   n_cl VSS V = V(n_xl,VSS)*(1-V(n_ql,VSS))*(1-V(n_sd,VSS))*V(n_okc,VSS)*V(n_okd,VSS)
+
+*==============================================================================
+* PROPAGATION DELAY
+*   The datasheet delays (input 50 % -> output 10 % / 90 %, CL = 1 nF) are
+*     ton  = TON  * KD * DON(VDD)  * (1 + KBON *(15-VBIAS)/5)
+*     toff = TOFF * KD * DOFF(VDD) * (1 + KBOFF*(15-VBIAS)/5)
+*   with DON/DOFF interpolated over VDD = 3.5 / 5 / 10 / 15 / 20 V (factor 1
+*   at 15 V) and VBIAS clamped to 10..20 V (Figures 7B/C, 8B/C).  The part
+*   of it spent in the output stage - from the start of the pre-driver ramp
+*   to 10 % / 90 % of the output into 1 nF, TOON / TOOF (fitted, interpolated
+*   over VBIAS) - is subtracted; the rest is the internal delay td.
+*   A ramp node s follows the command at a finite slope, up at 0.5/td_on and
+*   down at 0.5/td_off [1/ns], so it crosses 0.5 exactly td after the input.
+*   With a heavier load than 1 nF the output part, and so ton/toff, grow.
+*==============================================================================
+Bdon  n_don VSS V = {DON35} + ({DON5}-({DON35}))*min(max(V(n_vdd,VSS)-3.5,0),1.5)/1.5
++   + ({DON10}-({DON5}))*min(max(V(n_vdd,VSS)-5,0),5)/5 + (1-({DON10}))*min(max(V(n_vdd,VSS)-10,0),5)/5
++   + ({DON20}-1)*min(max(V(n_vdd,VSS)-15,0),5)/5
+Bdof  n_dof VSS V = {DOFF35} + ({DOFF5}-({DOFF35}))*min(max(V(n_vdd,VSS)-3.5,0),1.5)/1.5
++   + ({DOFF10}-({DOFF5}))*min(max(V(n_vdd,VSS)-5,0),5)/5 + (1-({DOFF10}))*min(max(V(n_vdd,VSS)-10,0),5)/5
++   + ({DOFF20}-1)*min(max(V(n_vdd,VSS)-15,0),5)/5
+* VBIAS of each channel clamped to 10..20 V, and its output-stage share
+Bkh   n_kh VSS V = min(max(V(n_vbs,VSS),10),20)
+Bkl   n_kl VSS V = min(max(V(n_vcc,VSS),10),20)
+Btoh  n_toh VSS V = {TOON10} + ({TOON15}-({TOON10}))*min(V(n_kh,VSS)-10,5)/5 + ({TOON20}-({TOON15}))*max(V(n_kh,VSS)-15,0)/5
+Btfh  n_tfh VSS V = {TOOF10} + ({TOOF15}-({TOOF10}))*min(V(n_kh,VSS)-10,5)/5 + ({TOOF20}-({TOOF15}))*max(V(n_kh,VSS)-15,0)/5
+Btol  n_tol VSS V = {TOON10} + ({TOON15}-({TOON10}))*min(V(n_kl,VSS)-10,5)/5 + ({TOON20}-({TOON15}))*max(V(n_kl,VSS)-15,0)/5
+Btfl  n_tfl VSS V = {TOOF10} + ({TOOF15}-({TOOF10}))*min(V(n_kl,VSS)-10,5)/5 + ({TOOF20}-({TOOF15}))*max(V(n_kl,VSS)-15,0)/5
+* slopes [1/ns] of each channel's delay ramp
+Bruh  n_ruh VSS V = 0.5/max(5, {KD}*{TON}*V(n_don,VSS)*(1+{KBON}*(15-V(n_kh,VSS))/5) - {KE}*V(n_toh,VSS))
+Brdh  n_rdh VSS V = 0.5/max(5, {KD}*{TOFF}*V(n_dof,VSS)*(1+{KBOFF}*(15-V(n_kh,VSS))/5) - {KE}*V(n_tfh,VSS))
+Brul  n_rul VSS V = 0.5/max(5, {KD}*{TON}*V(n_don,VSS)*(1+{KBON}*(15-V(n_kl,VSS))/5) - {KE}*V(n_tol,VSS))
+Brdl  n_rdl VSS V = 0.5/max(5, {KD}*{TOFF}*V(n_dof,VSS)*(1+{KBOFF}*(15-V(n_kl,VSS))/5) - {KE}*V(n_tfl,VSS))
+
+* the ramps.  Each is a slew-limited follower written as  s = target - y:
+*     C dy/dt = C d(target)/dt - G*slope(y)      (C from target to y)
+* so ds/dt = slope(y): full slope beyond 0.1 of error, linear inside, the
+* up and down slopes blended smoothly (tanh) through y = 0, so there is no
+* kink where the node rests.  At DC y = 0 and s = target exactly - the
+* operating point needs no search.
+Btsh  n_tsh VSS V = V(n_ch,VSS)
+Cysh  n_tsh n_ysh 1p
+Bysh  n_ysh VSS I = 1m*(((V(n_ruh,VSS))+(V(n_rdh,VSS)))/2 + ((V(n_ruh,VSS))-(V(n_rdh,VSS)))/2*tanh(V(n_ysh,VSS)/0.02))*min(1,max(-1,10*V(n_ysh,VSS)))
+Rysh  n_ysh VSS 1G
+Bosh n_sh VSS V = V(n_tsh,VSS) - V(n_ysh,VSS)
+Btsl  n_tsl VSS V = V(n_cl,VSS)
+Cysl  n_tsl n_ysl 1p
+Bysl  n_ysl VSS I = 1m*(((V(n_rul,VSS))+(V(n_rdl,VSS)))/2 + ((V(n_rul,VSS))-(V(n_rdl,VSS)))/2*tanh(V(n_ysl,VSS)/0.02))*min(1,max(-1,10*V(n_ysl,VSS)))
+Rysl  n_ysl VSS 1G
+Bosl n_slo VSS V = V(n_tsl,VSS) - V(n_ysl,VSS)
+
+*==============================================================================
+* PRE-DRIVER (gates of the two output devices)
+*   d = comparator on the delay ramp.  eu drives the pull-up, ed the
+*   pull-down, both 0..1.  Turning on, the pull-down is released first
+*   (TFAST) and then eu ramps 0 -> 1 in TER ns; turning off, the pull-up is
+*   released and ed ramps 0 -> 1 in TEF ns.  Each device only starts once
+*   the other is (almost) off: no cross-conduction.  TER/TEF interpolated
+*   over VBIAS = 10 / 15 / 20 V - this ramp is what sets tr and tf.
+*==============================================================================
+Bdh   n_dh VSS V = min(1, max(0, 50*(V(n_sh,VSS)-0.5) + 0.5))
+Bdl   n_dl VSS V = min(1, max(0, 50*(V(n_slo,VSS)-0.5) + 0.5))
+Bterh n_terh VSS V = {KE}*({TER10} + ({TER15}-({TER10}))*min(V(n_kh,VSS)-10,5)/5 + ({TER20}-({TER15}))*max(V(n_kh,VSS)-15,0)/5)
+Btefh n_tefh VSS V = {KE}*({TEF10} + ({TEF15}-({TEF10}))*min(V(n_kh,VSS)-10,5)/5 + ({TEF20}-({TEF15}))*max(V(n_kh,VSS)-15,0)/5)
+Bterl n_terl VSS V = {KE}*({TER10} + ({TER15}-({TER10}))*min(V(n_kl,VSS)-10,5)/5 + ({TER20}-({TER15}))*max(V(n_kl,VSS)-15,0)/5)
+Btefl n_tefl VSS V = {KE}*({TEF10} + ({TEF15}-({TEF10}))*min(V(n_kl,VSS)-10,5)/5 + ({TEF20}-({TEF15}))*max(V(n_kl,VSS)-15,0)/5)
+
+* pull-up only once the pull-down is off, and vice versa
+Btuh  n_tuh VSS V = V(n_dh,VSS)*min(1,max(0,1.5-20*V(n_ph,VSS)))
+Cyuh  n_tuh n_yuh 1p
+Byuh  n_yuh VSS I = 1m*(((1/V(n_terh,VSS))+(1/{TFAST}))/2 + ((1/V(n_terh,VSS))-(1/{TFAST}))/2*tanh(V(n_yuh,VSS)/0.02))*min(1,max(-1,10*V(n_yuh,VSS)))
+Ryuh  n_yuh VSS 1G
+Bouh n_uh VSS V = V(n_tuh,VSS) - V(n_yuh,VSS)
+Btph  n_tph VSS V = (1-V(n_dh,VSS))*min(1,max(0,1.5-20*V(n_uh,VSS)))
+Cyph  n_tph n_yph 1p
+Byph  n_yph VSS I = 1m*(((1/V(n_tefh,VSS))+(1/{TFAST}))/2 + ((1/V(n_tefh,VSS))-(1/{TFAST}))/2*tanh(V(n_yph,VSS)/0.02))*min(1,max(-1,10*V(n_yph,VSS)))
+Ryph  n_yph VSS 1G
+Boph n_ph VSS V = V(n_tph,VSS) - V(n_yph,VSS)
+Btul  n_tul VSS V = V(n_dl,VSS)*min(1,max(0,1.5-20*V(n_pl,VSS)))
+Cyul  n_tul n_yul 1p
+Byul  n_yul VSS I = 1m*(((1/V(n_terl,VSS))+(1/{TFAST}))/2 + ((1/V(n_terl,VSS))-(1/{TFAST}))/2*tanh(V(n_yul,VSS)/0.02))*min(1,max(-1,10*V(n_yul,VSS)))
+Ryul  n_yul VSS 1G
+Boul n_ul VSS V = V(n_tul,VSS) - V(n_yul,VSS)
+Btpl  n_tpl VSS V = (1-V(n_dl,VSS))*min(1,max(0,1.5-20*V(n_ul,VSS)))
+Cypl  n_tpl n_ypl 1p
+Bypl  n_ypl VSS I = 1m*(((1/V(n_tefl,VSS))+(1/{TFAST}))/2 + ((1/V(n_tefl,VSS))-(1/{TFAST}))/2*tanh(V(n_ypl,VSS)/0.02))*min(1,max(-1,10*V(n_ypl,VSS)))
+Rypl  n_ypl VSS 1G
+Bopl n_pl VSS V = V(n_tpl,VSS) - V(n_ypl,VSS)
+
+*==============================================================================
+* OUTPUT STAGES
+*   I = s * Isat(VBIAS) * tanh(V/V0)/tanh(1/KV0),  V0 = KV0*VBIAS
+*   Isat = IO*(1 + KIO*(VBIAS-15)/5), floor 5 % (keeps the output held low
+*   with the supply collapsed).  VBIAS = VBS for HO, VCC for LO.
+*==============================================================================
+Bish  n_ish VSS V = {IO}*max(0.05, 1 + {KIO}*(V(n_vbs,VSS)-15)/5)/tanh(1/{KV0})
+Bisl  n_isl VSS V = {IO}*max(0.05, 1 + {KIO}*(V(n_vcc,VSS)-15)/5)/tanh(1/{KV0})
+Bv0h  n_v0h VSS V = {KV0}*max(5, V(n_vbs,VSS))
+Bv0l  n_v0l VSS V = {KV0}*max(5, V(n_vcc,VSS))
+
+Bhu   VB HO  I = V(n_uh,VSS) * V(n_ish,VSS) * tanh(V(VB,HO)/V(n_v0h,VSS))
+Bhd   HO VS  I = V(n_ph,VSS) * V(n_ish,VSS) * tanh(V(HO,VS)/V(n_v0h,VSS))
+Chs   HO VS  {COUT}
+Dhp   HO VB  DIR2110
+Dhn   VS HO  DIR2110
+
+Blu   VCC LO I = V(n_ul,VSS) * V(n_isl,VSS) * tanh(V(VCC,LO)/V(n_v0l,VSS))
+Bld   LO COM I = V(n_pl,VSS) * V(n_isl,VSS) * tanh(V(LO,COM)/V(n_v0l,VSS))
+Cls   LO COM {COUT}
+Dlp   LO VCC DIR2110
+Dln   COM LO DIR2110
+
+* DC paths for the floating domains (keep .op well posed with nothing
+* connected; 1 Gohm is far below the 50 uA leakage spec)
+Rvs   VS  VSS 1G
+Rcom  COM VSS 1G
+Rvb   VB  VS  100Meg
+Rvc   VCC COM 100Meg
+
+.ENDS IR2110

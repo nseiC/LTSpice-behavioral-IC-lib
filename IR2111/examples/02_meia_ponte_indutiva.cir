@@ -1,0 +1,57 @@
+* IR2111 - meia-ponte com carga indutiva (inversor de onda quadrada)
+*
+*   200 V --[M1]--+--[L 1 mH + 10 ohm]--+ 100 V (ponto medio do
+*                 |                       barramento)
+*                [M2]
+*                 |
+*                GND
+*
+* Uma entrada IN a 25 kHz, 50 %.  O IR2111 gera HO / LO com ~700 ns de
+* tempo morto.  Durante o tempo morto a corrente da carga indutiva continua
+* e passa pelo diodo de corpo do MOSFET oposto: o no de comutacao vira
+* sozinho ANTES do outro MOSFET ligar (comutacao suave, quase sem perda de
+* ligacao).  E o uso classico do IR2111: reatores eletronicos e meias-pontes
+* de motores.
+*
+* A tensao do lado alto (VS) vai a 200 V; o bootstrap (Dbs, Cbs) alimenta HO.
+*
+* Rode e olhe: v(sw), v(ho,sw), v(lo), i(L1), v(vb,sw)
+
+.include ../IR2111.lib
+
+* barramento de 200 V com ponto medio ideal (dois capacitores grandes)
+Vbus vbus 0 200
+Vmid mid 0 100
+Vcc  vcc 0 15
+
+X1 vcc in 0 lo sw ho vb IR2111
+Dbs  vcc vb DBOOT
+Cbs  vb  sw 470n
+
+Rg1 ho g1 22
+Rg2 lo g2 22
+X_M1 vbus g1 sw NMOS500
+X_M2 sw   g2 0  NMOS500
+L1   sw nl 1m
+Rl   nl mid 10
+
+Vin in 0 PULSE(0 15 5u 20n 20n 19.98u 40u)
+
+* MOSFET de 500 V da classe do IRF840 (~0,85 ohm, Ciss ~1,3 nF): nivel 1 +
+* capacitancias e diodo de corpo explicitos, como nos exemplos do IR2110
+.subckt NMOS500 D G S
+Rg  G gi 1
+M1  di gi S S NCH500 L=1u W=1u
+Rd  D di 0.8
+Cgs gi S 1.2n
+Cgd gi D 60p
+Cds D S 150p
+Dbd S D DBD500
+.model NCH500 NMOS(LEVEL=1 VTO=3.5 KP=8 LAMBDA=0.01)
+.model DBD500 D(IS=1e-12 N=1.2 RS=20m CJO=0.2n)
+.ends
+.model DBOOT D(IS=1n N=1.7 RS=0.1 CJO=10p)
+
+.options method=gear
+.tran 20n 1m 0 20n uic
+.end

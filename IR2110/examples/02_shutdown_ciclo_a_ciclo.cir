@@ -1,0 +1,27 @@
+* IR2110 - entrada SD: desligamento ciclo a ciclo (Figura 1 do datasheet)
+*
+* HIN = LIN: trem de pulsos de 100 kHz (5 us em alto).  SD sobe no meio do
+* 2o pulso (corta o pulso), fica alto por um ciclo inteiro e desce no meio
+* do 3o pulso: a saida NAO volta no resto desse pulso - so na proxima borda
+* de subida.  Um pulso curto de SD (200 ns) no 6o pulso corta so aquele
+* pulso.  E o comportamento "edge-triggered" da Figura 1: o SD serve de
+* limitador de corrente ciclo a ciclo sem precisar de latch externo.
+*
+* Logica em VDD = 5 V; tsd (SD -> saida) ~ 110 ns.
+*
+* Rode e olhe: v(in), v(sd), v(ho,vs), v(lo)
+
+.include ../IR2110.lib
+
+Vcc vcc 0 15
+Vdd vdd 0 5
+Vbs vb vs 15
+Vs  vs 0 0
+Vin in 0 PULSE(0 5 2u 10n 10n 5u 10u)
+Vsd sd 0 PWL(0 0 14u 0 14.01u 5 25u 5 25.01u 0 54u 0 54.01u 5 54.2u 5 54.21u 0)
+X1 lo 0 vcc vs vb ho vdd in sd in 0 IR2110
+Ch ho vs 1n
+Cl lo 0 1n
+
+.tran 2n 80u 0 5n
+.end

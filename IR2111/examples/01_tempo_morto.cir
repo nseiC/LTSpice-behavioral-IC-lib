@@ -1,0 +1,27 @@
+* IR2111 - tempos de comutacao e tempo morto (Figuras 3, 4 e 5)
+*
+* VCC = VBS = 15 V, CL = 1 nF em HO e em LO, uma so entrada IN (0..15 V).
+* IN alto: HO liga, LO desliga.  IN baixo: LO liga, HO desliga.
+*
+* Tipicos do datasheet (25 C): ton 850 ns, toff 150 ns, tr 80 ns, tf 40 ns,
+* tempo morto DT = 700 ns (de 90 % da saida que desliga a 10 % da que liga,
+* nas duas bordas).  O tempo morto e a diferenca ton - toff: cada saida liga
+* devagar e desliga rapido.
+*
+* Um pulso de IN mais curto que o tempo morto (aqui 400 ns) nao chega a
+* ligar HO - so faz LO piscar.
+*
+* Rode e olhe: v(in), v(ho,vs), v(lo)
+
+.include ../IR2111.lib
+
+Vcc vcc 0 15
+Vbs vb vs 15
+Vs  vs 0 0
+Vin in 0 PWL(0 0 2u 0 2.01u 15 7u 15 7.01u 0 12u 0 12.01u 15 12.4u 15 12.41u 0)
+X1 vcc in 0 lo vs ho vb IR2111
+Ch ho vs 1n
+Cl lo 0 1n
+
+.tran 0.5n 16u 0 1n
+.end
