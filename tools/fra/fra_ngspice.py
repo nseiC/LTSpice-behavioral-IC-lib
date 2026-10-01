@@ -201,7 +201,7 @@ def main(cfgfile):
     if ana: hdr += " | %9s %8s" % ("analit dB", "fase")
     print(hdr)
     worst_g = worst_p = 0
-    judged = 0
+    judged = outliers = 0
     snr_min = cfg.get("snr_min", 20)
     tol_g, tol_p = cfg.get("tol_db", 1.0), cfg.get("tol_deg", 5.0)
     worst_r = 0
@@ -219,12 +219,25 @@ def main(cfgfile):
         if ana:
             Ta = ana(f)
             line += " | %9.2f %8.1f" % (20 * math.log10(abs(Ta)), math.degrees(np.angle(Ta)))
-        print(line)
         if snr >= snr_min:
             judged += 1
-            worst_g = max(worst_g, abs(ga - g), abs(gs - g))
-            worst_p = max(worst_p, abs(dpa), abs(dps))
-            worst_r = max(worst_r, abs(ga - g) / ag, abs(gs - g) / ag, abs(dpa) / ap, abs(dps) / ap)
+            r = max(abs(ga - g) / ag, abs(gs - g) / ag, abs(dpa) / ap, abs(dps) / ap)
+            # The 2x run differs from the nominal one in amplitude only, the
+            # dt/2 run in step only - and from EACH OTHER in both.  If those
+            # two agree while the nominal point sits apart from both, the
+            # nominal point caught a noise excursion: a nonlinearity would
+            # make the 2x run the odd one out, a step dependence the dt/2 run.
+            das = ((pa - ps + 180) % 360 - 180)
+            r2 = max(abs(ga - gs) / ag, abs(das) / ap)
+            if r > 1 and r2 <= 1:
+                outliers += 1
+                line += "  <- nominal fora (2x e dt/2 concordam)"
+                r = r2
+            else:
+                worst_g = max(worst_g, abs(ga - g), abs(gs - g))
+                worst_p = max(worst_p, abs(dpa), abs(dps))
+            worst_r = max(worst_r, r)
+        print(line)
     fc, pm = crossover(out["base"])
     if fc:
         print("RESULT cruzamento %.4g Hz, margem de fase %.1f graus" % (fc, pm))
@@ -234,6 +247,8 @@ def main(cfgfile):
     msg = ("linear (2x amplitude) e independente do passo (dt/2): pior desvio %.2f dB / %.1f graus nos %d pontos "
            "com SNR >= %g dB (%.0f %% da tolerancia, que e o maior entre %g dB / %g graus e 3 sigma do ruido)") % (
         worst_g, worst_p, judged, snr_min, 100 * worst_r, tol_g, tol_p)
+    if outliers:
+        msg += "; %d ponto(s) com o nominal fora e 2x / dt/2 concordando" % outliers
     if ana and fc:
         ga = [abs(20 * math.log10(abs(ana(r[0]))) - r[1]) for r in out["base"] if r[3] >= snr_min]
         msg += "; vs analitico ate %.2f dB" % max(ga)

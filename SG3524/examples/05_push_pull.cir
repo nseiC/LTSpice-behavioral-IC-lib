@@ -1,42 +1,60 @@
 * SG3524 - PUSH-PULL com transformador, 24 V -> 5 V / 2 A
 *
 * Esta e a aplicacao-assinatura do SG3524: saidas SEPARADAS, cada uma
-* acionando metade do primario com tomada central, alternadas em 180 graus e
+* comandando metade do primario com tomada central, alternadas em 180 graus e
 * com o pulso de blanking garantindo que nunca conduzam juntas.  Cada saida
 * roda na metade da frequencia do oscilador.
 *
 * RT=10k, CT=1.25n -> oscilador 80 kHz -> 40 kHz por saida.
 *
-* Rode e olhe: v(vout), v(ca), v(cb), v(ct), i(Lpa), i(Lpb)
+* As saidas do CI NAO carregam a corrente do primario: o datasheet limita cada
+* uma a 100 mA, e um push-pull de 5 V / 2 A pede ~2 A de pico no primario.
+* Cada saida trabalha como seguidor de emissor (coletor no VIN, ~23 mA no
+* resistor de 1k) e comanda uma chave externa low-side.  (Uma versao anterior
+* deste exemplo ligava o primario direto nos coletores: 2 A de pico em cada
+* transistor, Vce ~ 5,8 V, o estagio de potencia virava os 5 ohm do modelo e a
+* resposta da malha mudava ~1,4 dB com a amplitude da injecao no FRA.)
+*
+* Compensacao (verificada com FRA, ver o README): Rcz + Ccz + Cp no pino 9,
+* Cff no divisor, e a rede R-C amortecedora na saida, como no buck.
+*
+* Rode e olhe: v(vout), v(pa), v(pb), v(ct), i(Lpa), i(Lpb)
 .include ../SG3524.lib
 Vin vin 0 24
 Rt rt 0 10k
 Ct ct 0 1.25n
 * realimentacao 5V -> 2.5V
 Rfb1 vout inv 10k
+* Cff: avanco de fase no divisor (zero em 1,6 kHz, polo em 3,2 kHz)
+Cff  vout inv 10n
 Rfb2 inv 0 10k
 Rd1 vref ni 5k
 Rd2 ni 0 5k
 Css ni 0 470n IC=0
-Rcz comp ncz 2.2k
-Ccz ncz 0 100n
-Cp comp 0 220p
-* saidas SEPARADAS: push-pull de verdade, emissores no terra
-Vea ea 0 0
-Veb eb 0 0
-X1 inv ni osc clp clm rt ct 0 comp sd ea ca cb eb vin vref SG3524
+Rcz comp ncz 470
+Ccz ncz 0 470n
+Cp comp 0 4.7n
+* saidas SEPARADAS como seguidores de emissor: coletores no VIN, cada emissor
+* comanda uma chave low-side (Vea/Veb so medem a corrente de cada saida)
+X1 inv ni osc clp clm rt ct 0 comp sd ea vin vin eb vin vref SG3524
+Vea ea ga 0
+Rga ga 0 1k
+Veb eb gb 0
+Rgb gb 0 1k
+Sa  pa 0 ga 0 PSW
+Sb  pb 0 gb 0 PSW
 * transformador com tomada central no primario (metade B invertida)
-Lpa vin ca 100u
-Lpb cb vin 100u
+Lpa vin pa 100u
+Lpb pb vin 100u
 Ls  ns1 ns2 25u
 K1 Lpa Lpb 0.995
 K2 Lpa Ls 0.995
 K3 Lpb Ls 0.995
 Rmag vin 0 1e7
-* snubbers nos coletores
-Rsa ca nsa 47
+* snubbers nos drenos
+Rsa pa nsa 47
 Csa nsa 0 2.2n
-Rsb cb nsb 47
+Rsb pb nsb 47
 Csb nsb 0 2.2n
 * ponte retificadora + filtro LC
 Da ns1 nr DFW
@@ -46,7 +64,12 @@ Dd 0 ns2 DFW
 Lf nr vout 22u
 Cf vout ncf 470u IC=0
 Rcf ncf 0 30m
+* amortecedor R-C: sem ele o LC de saida tem Q ~ 5 e a fase despenca logo
+* acima de 1,6 kHz
+Rdmp vout nd 0.33
+Cdmp nd 0 1000u IC=0
 Rload vout 0 2.5
+.model PSW SW(Ron=0.1 Roff=1Meg Vt=5 Vh=1)
 .model DFW D(IS=5e-8 N=1.05 CJO=100p TT=20n)
 * gear: amortece o "ringing" numerico das comutacoes da chave ideal.  Com o
 * trapezoidal, na abertura da chave o no de comutacao oscila numericamente e
@@ -56,7 +79,6 @@ Rload vout 0 2.5
 * passo maximo 100 ns: o tempo morto aqui e ~60 ns (CT = 1,25 nF).  Com
 * 500 ns o solver pula o cruzamento do limiar do oscilador e o periodo sai
 * 1,6 % curto e ruidoso (12,51 us contra 12,72 us a 20 ns); com 100 ns o
-* erro cai para 0,25 %.  No push-pull isso importa: e o que faz o FRA
-* depender do passo.  (Ver "What to put on the schematic" no README.)
+* erro cai para 0,25 %.  (Ver "What to put on the schematic" no README.)
 .tran 100n 12m 0 100n uic
 .end
